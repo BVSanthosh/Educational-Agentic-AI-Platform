@@ -1,27 +1,26 @@
-# Cloud-Cost & Infrastructure Optimizer
+# Educational Agentic AI Platform
 
-A tool that statically analyses a IaC file using an AI Agent and provides a comprehensive report highlighting security vulnerabilities, cost optimisations and more. Compatible with Docker, Terraform and AWS. 
+A educational hub containing a collection of tools for enhancing how people approach learning and researching
 
 ## ✨ Features
-- **Fast & Easy** - Simply drag and drop the file to kick start the analysis
-- **Detailed Analysis** - Uses an DevOps Agent to analyse each line
-- **Production Readiness** - Provides a corrected template which is production ready
-- **Project Spaces** - Organise your workspace into seperate projects
+- **Document Summarization** - Uplaod a file and recieve a concise summary
+- **Reference Generation** - Receive a list of references (links to articles, blog posts, research papers and etc.) based on a specified topic
+- **Deep Research & Report Writing** - Receive a detailed research report based on a specificed subjet matter
 
 ## 🚀 Quick Start
 
 ### Prerequisites
 - Node v24+
 - npm v11+
-- python 3+
+- Python 3+
 - OpenAPI key
 
 ### Installation
 
 1. Clone the repository
 ```bash
-git clone https://github.com/BVSanthosh/Cloud-Cost-and-Infrastructure-Optimizer.git
-cd Cloud-Cost-and-Infrastructure-Optimizer
+git clone https://github.com/BVSanthosh/Educational-Agentic-AI-Platform.git
+cd Educational-Agentic-AI-Platform
 ```
 
 2. Backend Installation & Setup
