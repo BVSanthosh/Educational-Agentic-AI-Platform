@@ -9,10 +9,10 @@ async def get_document(doc : UploadFile):
     Analyses a IaC file and provides a detailed report
 
     Args:
-        doc: The IaC file
+        doc: The document to summarise
 
     Returns:
-        report: A detailed report
+        summary: A concise summary
     """
 
     MAX_SIZE = 2097152   # The max file size allowed

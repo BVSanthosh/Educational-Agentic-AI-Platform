@@ -1,9 +1,9 @@
 from fastapi import FastAPI
-from api.analysis import router as analysis_router
+from backend.app.api.references import router as references
 
 app = FastAPI()
 
-app.include_router(analysis_router)
+app.include_router(references)
 
 @app.get("/")
 async def root():
