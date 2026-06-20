@@ -3,7 +3,7 @@ from typing import Union, Literal
 
 class Reference(BaseModel):
     tile: str
-    link: str
+    url: str
 
 class ReferencesOutput(BaseModel):
     description: str
@@ -23,3 +23,6 @@ class TavilySearchOutput(BaseModel):
     content: str
     score: int
     raw_content: str
+
+class TavilySearchError(BaseModel):
+    error: str

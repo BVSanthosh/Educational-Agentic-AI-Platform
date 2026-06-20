@@ -5,7 +5,7 @@ from langchain_tavily import TavilySearch
 from typing import Literal
 from config import env
 from utils import read_prompt
-from schemas import ReferencesOutput, TavilySearchInput, TavilySearchOutput
+from schemas import ReferencesOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
 
 PROMPT_FILE_NAME = "references.md"
 SYSTEM_PROMPT = read_prompt(PROMPT_FILE_NAME)
@@ -19,19 +19,20 @@ def web_search(
     max_results: int = 5,
     time_range: Literal["day", "week", "month", "year"] | None = None,
     include_domains: list[str] | None = None,
-    search_depth: Literal['basic', 'advanced', 'fast', 'ultra-fast'] = "basic"
-) -> list[TavilySearchOutput] | None:
+    search_depth: Literal["basic", "advanced", "fast", "ultra-fast"] = "basic"
+) -> list[TavilySearchOutput] | TavilySearchError:
     """
-    Search the web for relevant resources given the provided search query
+    Search the web for relevant resources using tavily. 
 
     Args:
-        query: the search query
-        topic: the topic of search
-        max_results: the maximum allowed results
-        time_range: how far back the search should be done
+        query: the user's query
+        topic: the type of query. It can only have the following values: "general", "news", "finance"
+        max_results: the maximum number of resources to gather. The default is 5 
+        time_range: how far back the search should be done from. It can only have the following values: "day", "week", "month", "year"
         include_domains: any specific domains that the search should be based on
-        search_depth: how deep the search should be
+        search_depth: how deep the search should be. It can only have the following values: "basic", "advanced", "fast", "ultra-fast"
 
+    Returns either a resource list with the type list[TavilySearchOutput] or an error of type TavilySearchError
     """
 
     configured_search = tavily_client.bind(
@@ -44,7 +45,10 @@ def web_search(
     
     search_results = configured_search.invoke({"query": query})
 
-    return search_results["results"]
+    if "detail" in search_results:
+        return search_results["detail"]["error"]
+    else:
+        return search_results["results"]
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
@@ -62,14 +66,16 @@ agent = create_agent(
     response_format=ReferencesOutput,
 )
 
-def get_reference_response(topic: str) -> ReferencesOutput:
+def get_reference_response(input: str) -> ReferencesOutput:
     result = agent.invoke({
         "messages": [
             {
                 "role": "user",
-                "content": topic
+                "content": input
             }
         ]
     })
+    print("############################")
+    print(result)
 
     return result["structured_response"]
