@@ -2,7 +2,7 @@ from langchain.tools import tool
 from langchain.agents import create_agent
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_tavily import TavilySearch
-from typing import Literal
+from typing import Literal, AsyncGenerator
 from config import env
 from utils import read_prompt
 from schemas import ReferencesOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
@@ -66,16 +66,16 @@ agent = create_agent(
     response_format=ReferencesOutput,
 )
 
-def get_reference_response(input: str) -> ReferencesOutput:
-    result = agent.invoke({
+async def get_stream_generator(input: str) -> AsyncGenerator[str, None]:
+    stream = await agent.astream_events({
         "messages": [
             {
                 "role": "user",
                 "content": input
             }
         ]
-    })
-    print("############################")
-    print(result)
+    }, version="v3")
 
-    return result["structured_response"]
+    async for message in stream.messages:
+        async for delta in message.text:
+            yield delta
