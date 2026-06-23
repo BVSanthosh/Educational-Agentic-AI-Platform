@@ -1,13 +1,17 @@
 from pydantic import BaseModel
 from typing import Union, Literal
 
-class Reference(BaseModel):
+class Resource(BaseModel):
     tile: str
     url: str
 
-class ReferencesOutput(BaseModel):
+class AgentOutput(BaseModel):
     description: str
-    references: Union[list[Reference], None]
+    references: Union[list[Resource], None]
+
+class References(BaseModel):
+    query: str
+    num_of_refs: int
 
 class TavilySearchInput(BaseModel):
     query: str

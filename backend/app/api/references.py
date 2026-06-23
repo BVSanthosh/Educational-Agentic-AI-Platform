@@ -2,12 +2,12 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator
 from services import get_stream_generator
-from schemas import ReferencesOutput
-
+from schemas import References
+ 
 router = APIRouter(prefix="/references")
 
-@router.post("/")
-async def get_document(query: str, num_of_refs: int) -> StreamingResponse: 
+@router.post("/", response_model=StreamingResponse)
+async def get_references(req: References) -> StreamingResponse: 
     """
     Generates a list of references
 
@@ -21,7 +21,7 @@ async def get_document(query: str, num_of_refs: int) -> StreamingResponse:
     if str == None:
         raise HTTPException(status_code=400, detail="No topic provided")
     
-    input: str = f"query: {query}. resources: {num_of_refs}"
+    input: str = f"query: {req.query}. resources: {req.num_of_refs}"
 
     stream_generator: AsyncGenerator[str, None] = get_stream_generator(input)
 

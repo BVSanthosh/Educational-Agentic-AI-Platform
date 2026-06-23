@@ -1,1 +1,1 @@
-from .references import ReferencesOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
+from .references import References, AgentOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError

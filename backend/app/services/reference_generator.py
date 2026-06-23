@@ -1,11 +1,13 @@
 from langchain.tools import tool
 from langchain.agents import create_agent
+from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware, ToolRetryMiddleware, ModelRetryMiddleware
+from langgraph.checkpoint.memory import InMemorySaver
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_tavily import TavilySearch
 from typing import Literal, AsyncGenerator
 from config import env
 from utils import read_prompt
-from schemas import ReferencesOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
+from schemas import AgentOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
 
 PROMPT_FILE_NAME = "references.md"
 SYSTEM_PROMPT = read_prompt(PROMPT_FILE_NAME)
@@ -51,7 +53,7 @@ def web_search(
         return search_results["results"]
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash",
+    model="gemini-2.5-flash", 
     api_key = env.GOOGLE_API_KEY,
     temperature=0.0,
     max_tokens=None,
@@ -59,12 +61,37 @@ llm = ChatGoogleGenerativeAI(
     max_retries=2,
 )
 
+agent_middleware = [
+            ModelCallLimitMiddleware(
+                run_limit=4
+            ),
+            ToolCallLimitMiddleware(
+                tool_name="web_search",
+                run_limit=2
+            ),
+            ModelRetryMiddleware(
+                max_retries=2,
+                backoff_factor=2,
+                initial_delay=1,
+                on_failure="continue",
+            ),
+            ToolRetryMiddleware(
+                tools=["web_search"],
+                max_retries=1,
+                backoff_factor=2,
+                initial_delay=1,
+                on_failure="continue"
+            )
+        ]
+
 agent = create_agent(
-    model=llm,
-    tools=[web_search],
-    system_prompt=SYSTEM_PROMPT,
-    response_format=ReferencesOutput,
-)
+        model=llm,
+        tools=[web_search],
+        system_prompt=SYSTEM_PROMPT,
+        response_format=AgentOutput,
+        checkpointer=InMemorySaver(),
+        middleware=agent_middleware
+    )
 
 async def get_stream_generator(input: str) -> AsyncGenerator[str, None]:
     stream = await agent.astream_events({
