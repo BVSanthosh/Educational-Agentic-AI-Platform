@@ -1,3 +1,4 @@
+from fastapi import HTTPException
 from langchain.tools import tool
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware, ToolRetryMiddleware, ModelRetryMiddleware
@@ -5,9 +6,9 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_tavily import TavilySearch
 from typing import Literal, AsyncGenerator
-from config import env
-from utils import read_prompt
-from schemas import AgentOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
+from app.config import env
+from app.utils import read_prompt
+from app.schemas import AgentOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
 
 PROMPT_FILE_NAME = "references.md"
 SYSTEM_PROMPT = read_prompt(PROMPT_FILE_NAME)
@@ -44,65 +45,76 @@ def web_search(
         include_domains=include_domains,
         search_depth=search_depth
     )
-    
-    search_results = configured_search.invoke({"query": query})
 
+    search_results = configured_search.invoke({"query": query})
+    
     if "detail" in search_results:
         return search_results["detail"]["error"]
     else:
         return search_results["results"]
 
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash", 
-    api_key = env.GOOGLE_API_KEY,
+    model="gemini-2.5-flash-lite", 
+    api_key = env.GEMINI_API_KEY,
     temperature=0.0,
     max_tokens=None,
     timeout=None,
-    max_retries=2,
 )
 
 agent_middleware = [
-            ModelCallLimitMiddleware(
-                run_limit=4
-            ),
-            ToolCallLimitMiddleware(
-                tool_name="web_search",
-                run_limit=2
-            ),
-            ModelRetryMiddleware(
-                max_retries=2,
-                backoff_factor=2,
-                initial_delay=1,
-                on_failure="continue",
-            ),
-            ToolRetryMiddleware(
-                tools=["web_search"],
-                max_retries=1,
-                backoff_factor=2,
-                initial_delay=1,
-                on_failure="continue"
-            )
-        ]
+    ModelCallLimitMiddleware(
+        run_limit=4
+    ),
+    ToolCallLimitMiddleware(
+        tool_name="web_search",
+        run_limit=2
+    ),
+    ModelRetryMiddleware(
+        max_retries=2,
+        backoff_factor=2,
+        initial_delay=1,
+        on_failure="continue",
+    ),
+    ToolRetryMiddleware(
+        tools=["web_search"],
+        max_retries=1,
+        backoff_factor=2,
+        initial_delay=1,
+        on_failure="continue"
+    )
+]
 
 agent = create_agent(
-        model=llm,
-        tools=[web_search],
-        system_prompt=SYSTEM_PROMPT,
-        response_format=AgentOutput,
-        checkpointer=InMemorySaver(),
-        middleware=agent_middleware
-    )
+    model=llm,
+    tools=[web_search],
+    system_prompt=SYSTEM_PROMPT,
+    response_format=AgentOutput,
+    checkpointer=InMemorySaver(),
+    middleware=agent_middleware
+)
 
-async def get_stream_generator(input: str) -> AsyncGenerator[str, None]:
-    stream = await agent.astream_events({
-        "messages": [
-            {
-                "role": "user",
-                "content": input
-            }
-        ]
-    }, version="v3")
+async def get_response_stream(input: str) -> AsyncGenerator[str, None]:
+    stream = await agent.astream_events(
+        {"messages": [{"role": "user", "content": input}]},
+        {"configurable": {"thread_id": "1"}},
+        version="v3")
+    try:
+        async for message in stream.messages:
+            async for delta in message.text:
+                yield delta
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
-    async for message in stream.messages:
-        async for delta in message.text:
-            yield delta
+async def get_response(input: str) -> AgentOutput:
+    try:
+        response = await agent.ainvoke(
+            {"messages": [{"role": "user", "content": input}]},
+            {"configurable": {"thread_id": "1"}}
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+    if not response or not hasattr(response, "structured_response"):
+        raise HTTPException(status_code=500, detail="An error occured while calling the agent. Please try again later.")
+
+    return response["structured_response"]

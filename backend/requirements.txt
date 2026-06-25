@@ -2,3 +2,7 @@ fastapi[standard]
 langchain
 langchain-google-genai
 langchain-tavily
+langgraph
+pytest
+pytest-asyncio
+httpx

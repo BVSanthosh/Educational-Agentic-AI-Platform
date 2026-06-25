@@ -1,1 +1,1 @@
-from .reference_generator import get_stream_generator
+from .reference_generator import get_response_stream, get_response
