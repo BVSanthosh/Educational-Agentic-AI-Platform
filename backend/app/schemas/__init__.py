@@ -1,1 +1,2 @@
-from .references import References, AgentOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
+from .references_schema import ReferenceInput, ReferenceOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
+from .research_schema import ResearchInput, ResearchOutput, OutlineSchema, Resource, Draft, Feedback, ResarchSubject

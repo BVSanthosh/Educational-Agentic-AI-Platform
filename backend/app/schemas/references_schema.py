@@ -5,11 +5,11 @@ class Resource(BaseModel):
     tile: str
     url: str
 
-class AgentOutput(BaseModel):
+class ReferenceOutput(BaseModel):
     description: str
     references: Union[list[Resource], None]
 
-class References(BaseModel):
+class ReferenceInput(BaseModel):
     query: str
     num_of_refs: int
 

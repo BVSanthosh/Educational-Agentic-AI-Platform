@@ -9,6 +9,6 @@ class Settings(BaseSettings):
     GEMINI_API_KEY: str = "gemini_api_key"
     TAVILY_API_KEY: str = "tavily_api_key"
     LANGSMITH_API_KEY: str = "langsmith_api_key"
-    LANGSMITH_TRACING: str = "langsmith_tracing"
+    LANGCHAIN_TRACING_V2: str = "langsmith_tracing"
 
 env = Settings()

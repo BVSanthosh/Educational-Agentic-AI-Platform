@@ -1,4 +1,4 @@
-from fastapi import HTTPException
+from fastapi import HTTPException 
 from langchain.tools import tool
 from langchain.agents import create_agent
 from langchain.agents.middleware import ModelCallLimitMiddleware, ToolCallLimitMiddleware, ToolRetryMiddleware, ModelRetryMiddleware
@@ -7,11 +7,10 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_tavily import TavilySearch
 from typing import Literal, AsyncGenerator
 from app.config import env
-from app.utils import read_prompt
-from app.schemas import AgentOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
+from app.services.reference_agent.reference_prompt import get_reference_prompt
+from app.schemas import ReferenceOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
 
-PROMPT_FILE_NAME = "references.md"
-SYSTEM_PROMPT = read_prompt(PROMPT_FILE_NAME)
+SYSTEM_PROMPT = get_reference_prompt()
 
 tavily_client = TavilySearch(tavily_api_key=env.TAVILY_API_KEY)
 
@@ -83,18 +82,17 @@ agent_middleware = [
         on_failure="continue"
     )
 ]
-
-agent = create_agent(
+# add checkpointer=InMemorySaver(), below
+reference_agent = create_agent(
     model=llm,
     tools=[web_search],
     system_prompt=SYSTEM_PROMPT,
-    response_format=AgentOutput,
-    checkpointer=InMemorySaver(),
+    response_format=ReferenceOutput,
     middleware=agent_middleware
 )
 
-async def get_response_stream(input: str) -> AsyncGenerator[str, None]:
-    stream = await agent.astream_events(
+async def get_references_stream(input: str) -> AsyncGenerator[str, None]:
+    stream = await reference_agent.astream_events(
         {"messages": [{"role": "user", "content": input}]},
         {"configurable": {"thread_id": "1"}},
         version="v3")
@@ -105,9 +103,9 @@ async def get_response_stream(input: str) -> AsyncGenerator[str, None]:
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
-async def get_response(input: str) -> AgentOutput:
+async def get_references(input: str) -> ReferenceOutput:
     try:
-        response = await agent.ainvoke(
+        response = await reference_agent.ainvoke(
             {"messages": [{"role": "user", "content": input}]},
             {"configurable": {"thread_id": "1"}}
         )

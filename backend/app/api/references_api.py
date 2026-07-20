@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import AsyncGenerator
-from app.services import get_response_stream, get_response
-from app.schemas import References, AgentOutput
+from app.services import get_references_stream, get_references
+from app.schemas import ReferenceOutput, ReferenceInput
  
 router = APIRouter(prefix="/references")
 
 @router.post("/stream", response_class=StreamingResponse)
-async def get_streamed_references(req: References) -> StreamingResponse: 
+async def get_streamed_references(req: ReferenceInput) -> StreamingResponse: 
     """
     Generates a list of references
 
@@ -23,18 +23,18 @@ async def get_streamed_references(req: References) -> StreamingResponse:
     
     input: str = f"query: {req.query}. resources: {req.num_of_refs}"
 
-    stream_generator: AsyncGenerator[str, None] = get_response_stream(input)
+    stream_generator: AsyncGenerator[str, None] = get_references_stream(input)
 
     return StreamingResponse(stream_generator, media_type="text/event_stream")
 
-@router.post("", response_model=AgentOutput)
-async def get_reference(req: References) -> AgentOutput: 
-    if req == None:
+@router.post("", response_model=ReferenceOutput)
+async def get_reference(req: ReferenceInput) -> ReferenceOutput: 
+    if req.query == "" or req.num_of_refs == 0:
         raise HTTPException(status_code=400, detail="No user query provided")
     
     input: str = f"query: {req.query}. resources: {req.num_of_refs}"
 
-    response: AgentOutput = await get_response(input)
+    response: ReferenceOutput = await get_references(input)
 
     return response
     
