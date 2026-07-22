@@ -7,7 +7,7 @@ router = APIRouter(prefix="/research")
 @router.post("/stream")
 async def get_research_stream(req: ResearchInput) -> str:
     if req.topic == "":
-        HTTPException(status_code=40)
+        HTTPException(status_code=400)
         
     report: str = await get_research(req.topic)
     

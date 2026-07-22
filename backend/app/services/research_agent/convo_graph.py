@@ -26,8 +26,7 @@ graph_builder.add_edge("research_tool", "interviewer")
 graph_builder.add_edge("interviewer", END)
  
 checkpointer = InMemorySaver()
-# add checkpointer=checkpointer
-app = graph_builder.compile()
+app = graph_builder.compile(checkpointer=checkpointer)
 
 async def get_research(topic: str) -> str:
     config: RunnableConfig = {"configurable": {"thread_id": "user_1"}}

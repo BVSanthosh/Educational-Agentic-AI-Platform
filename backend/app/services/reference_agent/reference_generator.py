@@ -82,13 +82,14 @@ agent_middleware = [
         on_failure="continue"
     )
 ]
-# add checkpointer=InMemorySaver(), below
+
 reference_agent = create_agent(
     model=llm,
     tools=[web_search],
     system_prompt=SYSTEM_PROMPT,
     response_format=ReferenceOutput,
-    middleware=agent_middleware
+    middleware=agent_middleware,
+    checkpointer=InMemorySaver()
 )
 
 async def get_references_stream(input: str) -> AsyncGenerator[str, None]:

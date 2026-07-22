@@ -52,5 +52,4 @@ graph_builder.add_conditional_edges(
 )
 
 checkpointer = InMemorySaver()
-# add checkpointer=checkpointer below
-app = graph_builder.compile()
+app = graph_builder.compile(checkpointer=checkpointer)
