@@ -3,7 +3,7 @@ from llama_index.embeddings.google_genai import GoogleGenAIEmbedding
 from llama_index.core.node_parser import SentenceSplitter
 from llama_index.core.extractors import TitleExtractor
 from llama_index.llms.google_genai import GoogleGenAI
-from app.config import env
+from backend.app.core.config import env
 
 llm = GoogleGenAI(
     model="gemini-2.5-flash",

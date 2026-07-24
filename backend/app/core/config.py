@@ -10,5 +10,7 @@ class Settings(BaseSettings):
     TAVILY_API_KEY: str = "tavily_api_key"
     LANGSMITH_API_KEY: str = "langsmith_api_key"
     LANGCHAIN_TRACING_V2: str = "langsmith_tracing"
+    DATABASE_URL: str = "db_url"
+    DEBUG: bool = True
 
 env = Settings()

@@ -1,6 +1,6 @@
 import chromadb
 import os
-from pathlib import Path
+from pathlib import Path 
 from llama_index.readers.file import PDFReader
 from llama_index.vector_stores.chroma import ChromaVectorStore
 from llama_index.core.ingestion import IngestionPipeline

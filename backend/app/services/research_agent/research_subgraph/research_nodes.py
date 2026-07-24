@@ -1,6 +1,6 @@
 from typing import cast, Any
 from langchain_tavily import TavilySearch
-from app.config import env
+from backend.app.core.config import env
 from app.services.research_agent.llm import llm
 from app.services.research_agent.research_subgraph.research_state import ResearchState, Query
 from app.services.research_agent.research_subgraph.research_prompt import (

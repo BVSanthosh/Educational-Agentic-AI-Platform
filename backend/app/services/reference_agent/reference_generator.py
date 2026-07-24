@@ -6,7 +6,7 @@ from langgraph.checkpoint.memory import InMemorySaver
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_tavily import TavilySearch
 from typing import Literal, AsyncGenerator
-from app.config import env
+from backend.app.core.config import env
 from app.services.reference_agent.reference_prompt import get_reference_prompt
 from app.schemas import ReferenceOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
 
