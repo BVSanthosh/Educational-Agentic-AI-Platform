@@ -3,6 +3,7 @@ sqlalchemy
 asyncpg 
 alembic 
 greenlet
+pgvector
 
 pytest
 pytest-asyncio
