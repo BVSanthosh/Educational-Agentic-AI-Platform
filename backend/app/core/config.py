@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     POSTGRES_DB: str = "mydb"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
-    SECRET_KEY: str = "f054b0882fedf7660687c56c7306175e7bf210e209cb9425fb1ceaf3027560b8"
+    SECRET_KEY: str = "secret_key"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
