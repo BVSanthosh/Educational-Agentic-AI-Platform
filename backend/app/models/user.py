@@ -9,12 +9,12 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
 from app.models.space import Space
 
-if TYPE_CHECKING:
-    from app.models.space import Space
+if TYPE_CHECKING: 
+    from app.models.space import Space 
     from app.models.document import Document
 
 class User(Base):
-    __tablename__ = "users"
+    __tablename__ = "user"
 
     id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), primary_key=True ,default = uuid.uuid4

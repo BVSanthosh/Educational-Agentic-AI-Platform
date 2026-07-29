@@ -4,9 +4,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.core.config import env
 from app.core.database import engine
 from sqlalchemy import text
-from app.api import router as reference_router
-from app.api import router as research_router
-from app.api import router as summary_router
+from app.api import (
+    reference_router,
+    research_router,
+    summary_router,
+    space_router,
+    user_router
+)
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -39,6 +44,8 @@ app.add_middleware(
     allow_headers=["*"]
 )
 
+app.include_router(user_router)
+app.include_router(space_router)
 app.include_router(reference_router)
 app.include_router(research_router)
 app.include_router(summary_router)

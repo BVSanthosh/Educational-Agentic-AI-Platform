@@ -1,8 +1,10 @@
 fastapi[standard]
+pyjwt
+pwdlib[argon2]
+
 sqlalchemy 
 asyncpg 
 alembic 
-greenlet
 pgvector
 
 pytest

@@ -57,7 +57,6 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(connection=connection, target_metadata=target_metadata)
 
     with context.begin_transaction():
-        context.execute("CREATE EXTENSION IF NOT EXISTS vector;")
         context.run_migrations()
 
 
