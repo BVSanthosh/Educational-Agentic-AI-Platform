@@ -6,6 +6,8 @@ sqlalchemy
 asyncpg 
 alembic 
 pgvector
+psycopg[binary]
+psycopg-pool
 
 pytest
 pytest-asyncio
@@ -15,6 +17,7 @@ langchain
 langchain-google-genai
 langchain-tavily
 langgraph
+langgraph-checkpoint-postgres
 
 llama-index
 llama-index-readers-file

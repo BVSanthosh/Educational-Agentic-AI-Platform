@@ -5,7 +5,5 @@ class UserBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     id: UUID
-
-class CreateUser(UserBase):
+    username: str
     email: str
-    password: str

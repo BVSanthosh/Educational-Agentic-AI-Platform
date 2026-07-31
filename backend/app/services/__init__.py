@@ -1,4 +1,4 @@
-from .reference_agent.reference_generator import get_references_stream, get_references
+from .reference_agent.reference_generator import get_and_persist_reference, stream_and_persist_reference
 from .research_agent.convo_graph import get_research
 from .summary_agent.ingestion_pipeline import process_and_summarise
 from .summary_agent.summary_agent import get_answer

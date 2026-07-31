@@ -1,4 +1,5 @@
 from typing import AsyncGenerator
+from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
 from app.core.config import env
@@ -29,3 +30,10 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
         except Exception:
             await session.rollback()
             raise
+
+checkpointer_pool: AsyncConnectionPool | None = None
+
+def get_checkpointer_pool() -> AsyncConnectionPool:
+    if checkpointer_pool is None:
+        raise RuntimeError("Checkpointer pool is not initialised")
+    return checkpointer_pool

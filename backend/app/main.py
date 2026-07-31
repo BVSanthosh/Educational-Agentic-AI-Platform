@@ -1,8 +1,10 @@
 from fastapi import FastAPI
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
+from psycopg_pool import AsyncConnectionPool
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from app.core.config import env
-from app.core.database import engine
+from app.core.database import engine, checkpointer_pool
 from sqlalchemy import text
 from app.api import (
     reference_router,
@@ -23,8 +25,24 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         print(f"Failed to connect to database: {e}")
         raise e
-    
+
+    conn_str = env.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
+
+    checkpointer_pool = AsyncConnectionPool(
+        conninfo=conn_str,
+        max_size=20,
+        kwargs={"autocommit": True}
+    )
+    await checkpointer_pool.open()
+
+    async with checkpointer_pool.connection() as conn:
+        checkpointer = AsyncPostgresSaver(conn)
+        await checkpointer.setup()
+
     yield 
+
+    if checkpointer_pool:
+        await checkpointer_pool.close()
 
     print("closing database connection...")
     await engine.dispose()

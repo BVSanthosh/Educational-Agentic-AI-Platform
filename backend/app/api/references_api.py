@@ -1,40 +1,59 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.responses import StreamingResponse
-from typing import AsyncGenerator
-from app.services import get_references_stream, get_references
+from sqlalchemy.ext.asyncio import AsyncSession
+from psycopg_pool import AsyncConnectionPool
+from sqlalchemy import select
+from typing import AsyncGenerator, Annotated
+from uuid import UUID
 from app.schemas import ReferenceOutput, ReferenceInput
- 
-router = APIRouter(prefix="/references")
+from app.utils import get_current_usr
+from app.core.database import get_db, get_checkpointer_pool
+from app.models import User, Space
+from app.services import stream_and_persist_reference, get_and_persist_reference
+
+router = APIRouter(prefix="/references", tags=["References"]) 
 
 @router.post("/stream", response_class=StreamingResponse)
-async def get_streamed_references(req: ReferenceInput) -> StreamingResponse: 
-    """
-    Generates a list of references
+async def get_streamed_references(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)], pool: Annotated[AsyncConnectionPool, Depends(get_checkpointer_pool)]) -> StreamingResponse: 
+    query = select(Space).where(Space.id == space_id)
+    result = (await session.scalars(query)).one_or_none()
 
-    Args:
-        topic: User-provided topic that the referneces should be about 
-
-    Returns:
-        references: A list of references
-    """
+    if result is None:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Space couldn't be found"
+        )
     
-    if str == None:
-        raise HTTPException(status_code=400, detail="No topic provided")
-    
-    input: str = f"query: {req.query}. resources: {req.num_of_refs}"
-
-    stream_generator: AsyncGenerator[str, None] = get_references_stream(input)
+    stream_generator: AsyncGenerator[str, None] = stream_and_persist_reference(
+        user_input=user_input, 
+        thread_id=str(result.thread_id), 
+        space_id=space_id, 
+        user_id=current_user.id, 
+        db=session, 
+        pool=pool
+    )
 
     return StreamingResponse(stream_generator, media_type="text/event_stream")
 
 @router.post("", response_model=ReferenceOutput)
-async def get_reference(req: ReferenceInput) -> ReferenceOutput: 
-    if req.query == "" or req.num_of_refs == 0:
-        raise HTTPException(status_code=400, detail="No user query provided")
-    
-    input: str = f"query: {req.query}. resources: {req.num_of_refs}"
+async def get_references(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)], pool: Annotated[AsyncConnectionPool, Depends(get_checkpointer_pool)]) -> ReferenceOutput | None: 
+    query = select(Space).where(Space.id == space_id)
+    result = (await session.scalars(query)).one_or_none()
 
-    response: ReferenceOutput = await get_references(input)
+    if result is None:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Space couldn't be found"
+            )
+    
+    response: ReferenceOutput | None = await get_and_persist_reference(
+        user_input=user_input, 
+        thread_id=str(result.thread_id), 
+        space_id=space_id, 
+        user_id=current_user.id, 
+        db=session, 
+        pool=pool
+    )
 
     return response
     

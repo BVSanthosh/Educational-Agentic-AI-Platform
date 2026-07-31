@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Dict, Any, TYPE_CHECKING
-from sqlalchemy import String, Integer, Text, ForeignKey, DateTime, func
+from sqlalchemy import String, Integer, Text, ForeignKey, DateTime, func, text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
@@ -31,13 +31,14 @@ class Document(Base):
     file_path: Mapped[str] = mapped_column(
         String(512), nullable=False
     )
-    file_size_bytes: Mapped[int] = mapped_column(Integer, nullable=False
+    file_size_bytes: Mapped[int] = mapped_column(
+        Integer, nullable=False
     )
     mime_type: Mapped[str] = mapped_column(
         String(100), default="application/pdf"
     )
     metadata_: Mapped[Dict[str, Any]] = mapped_column(
-        "metadata", JSONB, server_default="{}", nullable=False
+        "metadata", JSONB, nullable=False, default={}, server_default=text("'{}'::jsonb")
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()

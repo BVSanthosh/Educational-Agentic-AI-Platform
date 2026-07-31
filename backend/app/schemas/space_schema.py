@@ -1,16 +1,16 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from uuid import UUID
 from typing import Dict, Any 
-from sqlalchemy import select, update, delete
 
 class SpaceBase(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    id: UUID
     name: str
+    tool_type: str
 
-class SpaceCreate(SpaceBase):
-    pass
+class SpacesResponse(SpaceBase):
+    id: UUID
 
 class SpaceResponse(SpaceBase):
+    id: UUID
     data: Dict[str, Any] 

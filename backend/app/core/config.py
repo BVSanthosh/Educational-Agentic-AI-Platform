@@ -10,20 +10,41 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8", 
         validate_default=False
     )
- 
+
+    # Application Server
+    PRODUCTION: bool = False
+    DEBUG: bool = True
+
+    # Google's LLM
     GEMINI_API_KEY: str = "gemini_api_key"
+
+    # Tavily Search
     TAVILY_API_KEY: str = "tavily_api_key"
+
+    # LangSmith Tracing
     LANGSMITH_API_KEY: str = "langsmith_api_key"
     LANGCHAIN_TRACING_V2: str = "langsmith_tracing"
-    DEBUG: bool = True
+
+
+    # PostgreSQL Database
     POSTGRES_USER: str = "admin"
     POSTGRES_PASSWORD: str = "admin123"
     POSTGRES_DB: str = "mydb"
     POSTGRES_HOST: str = "localhost"
     POSTGRES_PORT: int = 5432
+
+    # JWT Authentication
     SECRET_KEY: str = "secret_key"
     ALGORITHM: str = "HS256"
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
+    REFRESH_TOKEN_EXPIRE_DAYS: int = 90
+    ACCESS_TOKEN_TYPE: str = "access"
+    REFRESH_TOKEN_TYPE: str = "refresh"
+
+    # Google's OAuth
+    GOOGLE_CLIENT_ID: str = "client_id"
+    GOOGLE_CLIENT_SECRET:str = "client_secret"
+    GOOGLE_REDIRECT_URI: str = "http://localhost:5173/auth/callback/google"
 
     @property
     def DATABASE_URL(self) -> str:
