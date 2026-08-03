@@ -1,4 +1,7 @@
 from typing import Any
+from uuid import UUID
+from sqlalchemy.ext.asyncio import AsyncSession
+from psycopg_pool import AsyncConnectionPool
 from langgraph.graph import StateGraph, START, END
 from langgraph.prebuilt import ToolNode, tools_condition
 from langgraph.checkpoint.memory import InMemorySaver
@@ -14,7 +17,7 @@ graph_builder.add_node("interviewer", clarify_research)
 graph_builder.add_node("research_tool", ToolNode([write_research_report]))
 
 graph_builder.add_edge(START, "interviewer")
-graph_builder.add_conditional_edges(
+graph_builder.add_conditional_edges( 
     "interviewer",
     tools_condition,
     {
@@ -24,11 +27,11 @@ graph_builder.add_conditional_edges(
 )
 graph_builder.add_edge("research_tool", "interviewer")
 graph_builder.add_edge("interviewer", END)
- 
+
 checkpointer = InMemorySaver()
 app = graph_builder.compile(checkpointer=checkpointer)
 
-async def get_research(topic: str) -> str:
+async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id: str, user_id: UUID, db: AsyncSession, pool: AsyncConnectionPool) -> str:
     config: RunnableConfig = {"configurable": {"thread_id": "user_1"}}
     message: Any = {"messages": HumanMessage(content=topic)}
 

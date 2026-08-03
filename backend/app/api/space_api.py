@@ -7,7 +7,9 @@ from uuid import UUID
 from app.schemas import SpaceResponse, SpaceBase, SpacesResponse
 from app.core import get_db
 from app.models import Space, User
-from app.utils import get_current_usr
+from app.utils import get_current_usr 
+
+REFERENCE = "Reference"
 
 router = APIRouter(prefix="/space", tags=["Spaces"]) 
 
@@ -17,7 +19,7 @@ async def get_space(space_id: UUID, session: Annotated[AsyncSession, Depends(get
     space = (await session.scalars(query)).one_or_none()
 
     if not space:
-        raise HTTPException(
+        raise HTTPException( 
             status_code=status.HTTP_404_NOT_FOUND, 
             detail="Space not found"
         )
@@ -37,6 +39,9 @@ async def create_space(paylaod: SpaceBase, session: Annotated[AsyncSession, Depe
         **paylaod.model_dump(),
         user_id=current_user.id
     )
+
+    if paylaod.tool_type != REFERENCE:
+        new_space.data["messages"] = []
 
     session.add(new_space)
     await session.commit()

@@ -75,7 +75,7 @@ def build_reference_agent(checkpointer: AsyncPostgresSaver):
     return create_agent(
         model=llm,
         tools=[web_search],
-        system_prompt=SYSTEM_PROMPT,
+        system_prompt=SYSTEM_PROMPT, 
         response_format=ReferenceOutput,
         middleware=agent_middleware,
         checkpointer=checkpointer
