@@ -13,7 +13,7 @@ from typing import Literal, AsyncGenerator, cast, Any
 from app.core.config import env
 from app.services.reference_agent.reference_prompt import get_reference_prompt
 from app.schemas import ReferenceOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
-from app.models import User, Space
+from app.models import Space
 
 SYSTEM_PROMPT = get_reference_prompt()
 tavily_client = TavilySearch(tavily_api_key=env.TAVILY_API_KEY)
@@ -62,7 +62,7 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.0,
     max_tokens=None,
     timeout=None,
-)
+) 
 
 agent_middleware = [
     ModelCallLimitMiddleware(run_limit=4),
@@ -71,8 +71,14 @@ agent_middleware = [
     ToolRetryMiddleware(tools=["web_search"], max_retries=1, backoff_factor=2, initial_delay=1, on_failure="continue")
 ]
 
-def build_reference_agent(checkpointer: AsyncPostgresSaver):
-    return create_agent(
+reference_agent: Any | None = None
+
+def init_reference_agent(pool: AsyncConnectionPool[Any]):
+    global reference_agent
+    
+    checkpointer = AsyncPostgresSaver(cast(Any, pool))
+    
+    reference_agent = create_agent(
         model=llm,
         tools=[web_search],
         system_prompt=SYSTEM_PROMPT, 
@@ -81,90 +87,102 @@ def build_reference_agent(checkpointer: AsyncPostgresSaver):
         checkpointer=checkpointer
     )
 
-async def stream_and_persist_reference(user_input: str, thread_id: str, space_id: UUID, user_id: UUID, db: AsyncSession, pool: AsyncConnectionPool) -> AsyncGenerator[str, None]:
+async def stream_and_persist_reference(user_input: str, thread_id: str, space_id: UUID, user_id: UUID, db: AsyncSession) -> AsyncGenerator[str, None]:
+    final_output: ReferenceOutput | None = None
+    
+    if reference_agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to initialise agent"
+        )
+        
+    stream = await reference_agent.astream_events(
+        {"messages": [{"role": "user", "content": user_input}]},
+        {"configurable": {"thread_id": str(thread_id)}},
+        version="v3"
+    )
+
+    try:
+        async for event in stream:
+            event_type = event.get("event")
+            event_data = event.get("data")
+            
+            if not isinstance(event_data, dict):
+                continue
+
+            if event_type == "on_chat_model_stream":
+                chunk = event_data.get("chunk")
+                if chunk and hasattr(chunk, "content") and chunk.content:
+                    yield str(chunk.content)
+
+            elif event_type == "on_chain_end" and event.get("name") == "LangGraph":
+                output = event_data.get("output")
+                if isinstance(output, dict):
+                    
+                    if "structured_response" in output:
+                        final_output = output["structured_response"]
+                    elif "structured_output" in output:
+                        final_output = output["structured_output"]
+    except Exception as e:
+        yield f"\n[Streaming Error: {str(e)}]"
+        return
+
+    if final_output:
+        try:
+            output_dict = final_output.model_dump(mode="json")
+            query = update(Space).where(Space.id == space_id, Space.user_id == user_id).values(data=output_dict, updated_at=func.now())
+
+            await db.execute(query)
+            await db.commit()
+        except Exception as db_err:
+            await db.rollback()
+            yield f"\n[Warning: Failed to persist response to database: {str(db_err)}]"
+
+async def get_and_persist_reference(user_input: str, thread_id: str, space_id: UUID, user_id: UUID, db: AsyncSession) -> ReferenceOutput:
     final_output: ReferenceOutput | None = None
 
-    async with pool.connection() as conn:
-        checkpointer = AsyncPostgresSaver(cast(Any, conn))
-        agent = build_reference_agent(checkpointer)
-
-        stream = await agent.astream_events(
-            {"messages": [{"role": "user", "content": user_input}]},
-            {"configurable": {"thread_id": str(thread_id)}},
-            version="v3"
+    if reference_agent is None:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Couldn't initialise agent"
         )
 
-        try:
-            async for event in stream:
-                event_type = event.get("event")
+    try:
+        response = await reference_agent.ainvoke(
+            {"messages": [{"role": "user", "content": user_input}]},
+            {"configurable": {"thread_id": thread_id}}
+        )
 
-                if event_type == "on_chat_mode_stream":
-                    chunk = event["data"]["chunk"]
-                    if hasattr(chunk, "content") and chunk.content:
-                        yield chunk.content
-
-                elif event_type == "on_chain_end" and event.get("name") == "LangGraph":
-                    output = event["data"].get("output")
-                    if output and "structure_output" in output:
-                        final_output = output["structured_output"]
-        except Exception as e:
-            yield f"\n[Streaming Error: {str(e)}]"
-            return
-
-        if final_output:
-            try:
-                output_dict = final_output.model_dump()
-                query = update(Space).where(Space.id == space_id, Space.user_id == user_id).values(data=output_dict, updated_at=func.now())
-
-                await db.execute(query)
-                await db.commit()
-            except Exception:
-                await db.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Error presisting response"
-                )
-
-async def get_and_persist_reference(user_input: str, thread_id: str, space_id: UUID, user_id: UUID, db: AsyncSession, pool: AsyncConnectionPool) -> ReferenceOutput | None:
-    final_output: ReferenceOutput | None = None
-
-    async with pool.connection() as conn:
-        checkpointer = AsyncPostgresSaver(cast(Any, conn))
-        agent = build_reference_agent(checkpointer)
-
-        try:
-            response = await agent.ainvoke(
-                {"messages": [{"role": "user", "content": user_input}]},
-                {"configurable": {"thread_id": thread_id}}
-            )
-
-            if response and "structured_content" in response:
+        if isinstance(response, dict):
+            if "structured_output" in response:
                 final_output = response["structured_output"]
-        except Exception:
+            elif "structured_response" in response:
+                final_output = response["structured_response"]
+    except Exception:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error generating response"
+        )
+
+    if not final_output:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Error generating response"
+        )
+
+    if final_output:
+        try:
+            output_dict = final_output.model_dump(mode="json")
+            query = update(Space).where(Space.id == space_id, Space.user_id == user_id).values(data=output_dict, created_at=func.noe())
+
+            await db.execute(query)
+            await db.commit()
+        except Exception as db_err:
+            await db.rollback()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error generating response"
+                detail=f"Failed to persist response to database: {str(db_err)}"
             )
-
-        if not final_output:
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Error generating response"
-            )
-
-        if final_output:
-            try:
-                output_dict = final_output.model_dump()
-                query = update(Space).where(Space.id == space_id, Space.user_id == user_id).values(data=output_dict, created_at=func.noe())
-
-                await db.execute(query)
-                await db.commit()
-            except Exception:
-                await db.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail="Error presisting response"
-                )
 
     return final_output
 

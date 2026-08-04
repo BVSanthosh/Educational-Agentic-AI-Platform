@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import get_db, env
 from app.models import User
-from app.utils import validate_token
+from app.utils.security import validate_token
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 

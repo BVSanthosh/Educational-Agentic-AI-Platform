@@ -29,8 +29,7 @@ async def get_streamed_references(user_input: str, space_id: UUID, current_user:
         thread_id=str(thread_id), 
         space_id=space_id, 
         user_id=current_user.id, 
-        db=session, 
-        pool=pool
+        db=session
     )
 
     return StreamingResponse(stream_generator, media_type="text/event_stream")
@@ -51,8 +50,7 @@ async def get_references(user_input: str, space_id: UUID, current_user: Annotate
         thread_id=str(thread_id), 
         space_id=space_id, 
         user_id=current_user.id, 
-        db=session, 
-        pool=pool
+        db=session
     )
 
     return response

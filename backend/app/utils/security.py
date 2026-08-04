@@ -43,7 +43,7 @@ def validate_token(token: str, expected_type: str = env.ACCESS_TOKEN_TYPE):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Couldn't validate credentials"
-    )
+    ) 
     try:
         payload = jwt.decode(token, env.SECRET_KEY, algorithms=[env.ALGORITHM])
 

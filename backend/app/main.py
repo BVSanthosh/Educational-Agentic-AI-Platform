@@ -1,10 +1,11 @@
 from fastapi import FastAPI
+from typing import Any
 from contextlib import asynccontextmanager
 from fastapi.middleware.cors import CORSMiddleware
 from psycopg_pool import AsyncConnectionPool
 from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from app.core.config import env
-from app.core.database import engine, checkpointer_pool
+from app.core.database import engine
 from sqlalchemy import text
 from app.api import (
     reference_router,
@@ -13,7 +14,10 @@ from app.api import (
     space_router,
     user_router
 )
-
+from app.services import (
+    init_reference_agent,
+    init_research_agent
+)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -28,7 +32,7 @@ async def lifespan(app: FastAPI):
 
     conn_str = env.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
 
-    checkpointer_pool = AsyncConnectionPool(
+    checkpointer_pool: AsyncConnectionPool[Any] = AsyncConnectionPool(
         conninfo=conn_str,
         max_size=20,
         kwargs={"autocommit": True}
@@ -38,6 +42,9 @@ async def lifespan(app: FastAPI):
     async with checkpointer_pool.connection() as conn:
         checkpointer = AsyncPostgresSaver(conn)
         await checkpointer.setup()
+        
+    init_reference_agent(checkpointer_pool)
+    init_research_agent(checkpointer_pool)
 
     yield 
 
