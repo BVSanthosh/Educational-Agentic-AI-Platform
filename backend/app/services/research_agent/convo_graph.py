@@ -52,7 +52,7 @@ async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id
         {"messages": [HumanMessage(content=user_input)]},
         {"configurable": {"thread_id": thread_id}},
         version="v2"
-    )
+    ) 
     
     try:
         async for event in stream:
@@ -78,8 +78,8 @@ async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id
         try:
             new_message = {
                 "id": str(uuid4()),
-                "role": "user",
-                "contet": user_input,
+                "role": "agent",
+                "contet": final_text,
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
             query = (

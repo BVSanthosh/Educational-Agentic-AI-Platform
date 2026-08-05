@@ -10,6 +10,8 @@ from app.models import Space, User
 from app.utils import get_current_usr 
 
 REFERENCE = "Reference"
+RESEEARCH = "Research"
+SUMMARY = "Summary"
 
 router = APIRouter(prefix="/space", tags=["Spaces"]) 
 
@@ -40,8 +42,12 @@ async def create_space(paylaod: SpaceBase, session: Annotated[AsyncSession, Depe
         user_id=current_user.id
     )
 
-    if paylaod.tool_type != REFERENCE:
+    if paylaod.tool_type == RESEEARCH:
         new_space.data["messages"] = []
+    elif paylaod.tool_type == SUMMARY:
+        new_space.data["messages"] = []
+        new_space.data["summary"] = ""
+        new_space.data["summary_progress"] = ""
 
     session.add(new_space)
     await session.commit()

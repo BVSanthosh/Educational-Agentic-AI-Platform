@@ -21,7 +21,6 @@ langgraph-checkpoint-postgres
 
 llama-index
 llama-index-readers-file
-llama-index-vector-stores-chroma
 llama-index-llms-google-genai
 llama-index-embeddings-google-genai
-chromadb
+llama-index-vector-stores-postgres

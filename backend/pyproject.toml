@@ -33,10 +33,9 @@ dependencies = [
     # LlamaIndex Stack
     "llama-index",
     "llama-index-readers-file",
-    "llama-index-vector-stores-chroma",
+    "llama-index-vector-stores-postgres",
     "llama-index-llms-google-genai",
     "llama-index-embeddings-google-genai",
-    "chromadb",
 ]
 
 # Development & Testing dependencies

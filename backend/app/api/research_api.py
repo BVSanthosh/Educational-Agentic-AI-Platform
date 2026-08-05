@@ -12,7 +12,6 @@ from app.utils import get_current_usr
 from app.models import User, Space
 from app.core.database import get_db, get_checkpointer_pool
 
-
 router = APIRouter(prefix="/research", tags=["Research"])
  
 @router.post("/stream")
@@ -66,7 +65,15 @@ async def get_streamed_research(user_input: str, space_id: UUID, current_user: A
         db=session
     )
     
-    return StreamingResponse(stream_generator, media_type="text/event_stream")
+    return StreamingResponse(
+        stream_generator, 
+        media_type="text/event_stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Critical for Nginx proxy streaming!
+        }
+    )
 
 @router.post("", response_model=ResearchOutput)
 async def create_research_report(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> ResearchOutput:

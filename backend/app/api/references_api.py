@@ -32,7 +32,15 @@ async def get_streamed_references(user_input: str, space_id: UUID, current_user:
         db=session
     )
 
-    return StreamingResponse(stream_generator, media_type="text/event_stream")
+    return StreamingResponse(
+        stream_generator, 
+        media_type="text/event_stream",
+        headers={
+            "Cache-Control": "no-cache, no-transform",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"
+        }
+    )
 
 @router.post("", response_model=ReferenceOutput)
 async def get_references(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)], pool: Annotated[AsyncConnectionPool, Depends(get_checkpointer_pool)]) -> ReferenceOutput | None: 

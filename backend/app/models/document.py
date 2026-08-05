@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime
 from typing import Dict, Any, TYPE_CHECKING
-from sqlalchemy import String, Integer, Text, ForeignKey, DateTime, func, text
+from sqlalchemy import String, Integer, Text, ForeignKey, DateTime, func, text as sa_text
 from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from pgvector.sqlalchemy import Vector
@@ -38,7 +38,7 @@ class Document(Base):
         String(100), default="application/pdf"
     )
     metadata_: Mapped[Dict[str, Any]] = mapped_column(
-        "metadata", JSONB, nullable=False, default={}, server_default=text("'{}'::jsonb")
+        "metadata", JSONB, nullable=False, default={}, server_default=sa_text("'{}'::jsonb")
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
@@ -62,14 +62,20 @@ class DocumentChunk(Base):
     document_id: Mapped[uuid.UUID] = mapped_column(
         UUID(as_uuid=True), ForeignKey("document.id", ondelete="CASCADE"), nullable=False, index=True
     )
-    chunk_index: Mapped[int] = mapped_column(
-        Integer, nullable=False
+    node_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, index=True
     )
-    content: Mapped[str] = mapped_column(
+    chunk_index: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0
+    )
+    text: Mapped[str] = mapped_column(
         Text, nullable=False
     )
-    embeddings: Mapped[Vector] = mapped_column(
+    embedding: Mapped[Vector] = mapped_column(
         Vector(3072), nullable=False
+    )
+    metadata_: Mapped[Dict[str, Any]] = mapped_column(
+        "metadata", JSONB, nullable=False, default={}, server_default=sa_text("'{}'::jsonb")
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
