@@ -5,13 +5,13 @@ from llama_index.core.ingestion import IngestionPipeline
 from llama_index.core.llms import ChatMessage
 from uuid import UUID, uuid4
 from app.core.database import AsyncSessionLocal
-from sqlalchemy import update, func
-from app.models import Document as DocumentModel, Space
+from sqlalchemy import update, func, String, cast
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
+from app.models import Document as DocumentModel, DocumentChunk, Space
 from app.services.summary_agent.models import (
     llm,
     embed_model,
-    splitter,
-    vector_store,
+    splitter
 )
 
 async def embed_and_summarise(filename: str, filepath: str, space_id: UUID, user_id: UUID):
@@ -19,7 +19,23 @@ async def embed_and_summarise(filename: str, filepath: str, space_id: UUID, user
         file_size = os.path.getsize(filepath)
         doc_id = uuid4()
         
+        parser = PDFReader()
+        documents = parser.load_data(file=Path(filepath))
+        
+        # 1. Run pipeline WITHOUT a vector store to just get the embedded nodes
+        pipeline = IngestionPipeline(
+            transformations=[
+                splitter,
+                embed_model,
+            ],
+        )
+        
+        # nodes will contain the chunked text and the vector embeddings
+        nodes = await pipeline.arun(documents=documents)
+
+        # 2. Insert into your custom database tables
         async with AsyncSessionLocal() as db:
+            # Add the parent Document first to satisfy the Foreign Key constraint
             doc_record = DocumentModel(
                 id=doc_id,
                 user_id=user_id,
@@ -27,31 +43,30 @@ async def embed_and_summarise(filename: str, filepath: str, space_id: UUID, user
                 filename=filename,
                 file_path=filepath,
                 file_size_bytes=file_size,
-                mime_type="application/json",
+                mime_type="application/pdf",
                 metadata_={"source": filename}
             )
-                
             db.add(doc_record)
+            await db.flush() # Ensure doc_record exists before adding chunks
+            
+            # Map LlamaIndex nodes to your DocumentChunk model
+            chunk_records = []
+            for i, node in enumerate(nodes):
+                chunk_records.append(
+                    DocumentChunk(
+                        document_id=doc_id,
+                        node_id=node.node_id,
+                        chunk_index=i,
+                        text=node.get_content(),
+                        embedding=node.embedding, # Insert pgvector embedding
+                        metadata_=node.metadata
+                    )
+                )
+            
+            db.add_all(chunk_records)
             await db.commit()
-            
-        parser = PDFReader()
-        documents = parser.load_data(file=Path(filepath))
 
-        for doc in documents:
-            doc.metadata["document_id"] = str(doc_id)
-            doc.metadata["space_id"] = str(space_id)
-            doc.metadata["user_id"] = str(user_id)
-                
-        pipeline = IngestionPipeline(
-            transformations=[
-                splitter,
-                embed_model,
-            ],
-            vector_store=vector_store,
-        )
-            
-        await pipeline.arun(documents=documents)
-
+        # 3. Generate the summary (Remains unchanged)
         full_doc_text = "\n\n".join([doc.text for doc in documents])
         messages = [
             ChatMessage(
@@ -67,6 +82,7 @@ async def embed_and_summarise(filename: str, filepath: str, space_id: UUID, user
         summary_response = await llm.achat(messages)
         summary_text = str(summary_response.message.content)
         
+        # 4. Update Space data (Remains unchanged)
         async with AsyncSessionLocal() as db:
             query = (
                 update(Space)
@@ -75,12 +91,12 @@ async def embed_and_summarise(filename: str, filepath: str, space_id: UUID, user
                     data=func.jsonb_set(
                         func.jsonb_set(
                             Space.data,
-                            "{summary}",
-                            func.to_jsonb(summary_text),
+                            cast(["summary"], ARRAY(String)),
+                            cast(summary_text, JSONB),
                             True
                         ),
-                        "status",
-                        func.to_jsonb("read"),
+                        cast(["status"], ARRAY(String)),
+                        cast("ready", JSONB),
                         True
                     ),
                     updated_at=func.now()
@@ -88,6 +104,7 @@ async def embed_and_summarise(filename: str, filepath: str, space_id: UUID, user
             )
             await db.execute(query)
             await db.commit()
+            
     except Exception as e:
         async with AsyncSessionLocal() as db:
             query = (
@@ -96,11 +113,11 @@ async def embed_and_summarise(filename: str, filepath: str, space_id: UUID, user
                 .values(
                     data=func.jsonb_set(
                         Space.data,
-                        "status",
-                        func.to_jsonb(f"faild:{str(e)}"),
+                        cast(["status"], ARRAY(String)),
+                        cast(f"failed: {str(e)}", JSONB),
                         True
                     ),
-                    udpated_at=func.now()
+                    updated_at=func.now()
                 )
             )
             await db.execute(query)

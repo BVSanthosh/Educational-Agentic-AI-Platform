@@ -6,7 +6,7 @@ class ResearchInput(BaseModel):
 
 # Not being used for now since only a string is being returned from the backend
 class ResearchOutput(BaseModel):
-    research_report: str
+    response: str
 
 class OutlineSchema(BaseModel):
     outline: str

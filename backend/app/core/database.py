@@ -1,4 +1,5 @@
-from typing import AsyncGenerator
+from fastapi import HTTPException, Request, status
+from typing import AsyncGenerator, Any
 from psycopg_pool import AsyncConnectionPool
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession, async_sessionmaker
 from sqlalchemy.orm import DeclarativeBase
@@ -6,7 +7,7 @@ from app.core.config import env
 
 engine = create_async_engine(
     env.DATABASE_URL,
-    echo=env.DEBUG,
+    echo=env.DEBUG, 
     pool_size=20,
     max_overflow=10,
     pool_pre_ping=True
@@ -30,9 +31,13 @@ async def get_db() -> AsyncGenerator[AsyncSession, None]:
             await session.rollback()
             raise
 
-checkpointer_pool: AsyncConnectionPool | None = None
-
-def get_checkpointer_pool() -> AsyncConnectionPool:
-    if checkpointer_pool is None:
-        raise RuntimeError("Checkpointer pool is not initialised")
-    return checkpointer_pool
+def get_checkpointer_pool(request: Request) -> AsyncConnectionPool[Any]:
+    pool: AsyncConnectionPool[Any] | None = getattr(request.app.state, "checkpointer_pool", None)
+    
+    if pool is None:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="Checkpointer connection pool is not initialized",
+        )
+        
+    return pool

@@ -131,7 +131,7 @@ async def stream_and_persist_reference(user_input: str, thread_id: str, space_id
         try:
             output_dict = final_output.model_dump(mode="json")
             query = update(Space).where(Space.id == space_id, Space.user_id == user_id).values(data=output_dict, updated_at=func.now())
-
+ 
             await db.execute(query)
             await db.commit()
         except Exception as db_err:
@@ -173,7 +173,7 @@ async def get_and_persist_reference(user_input: str, thread_id: str, space_id: U
     if final_output:
         try:
             output_dict = final_output.model_dump(mode="json")
-            query = update(Space).where(Space.id == space_id, Space.user_id == user_id).values(data=output_dict, created_at=func.noe())
+            query = update(Space).where(Space.id == space_id, Space.user_id == user_id).values(data=output_dict, created_at=func.now())
 
             await db.execute(query)
             await db.commit()

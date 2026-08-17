@@ -1,20 +1,22 @@
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from fastapi import HTTPException, Depends, status
-from typing import Annotated
+from typing import Annotated 
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core import get_db, env
 from app.models import User
 from app.utils.security import validate_token
 
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
+security = HTTPBearer()
 
-async def get_current_usr(token: Annotated[str, Depends(oauth2_scheme)], session: Annotated[AsyncSession, Depends(get_db)]) -> User:
+async def get_current_usr(auth: Annotated[HTTPAuthorizationCredentials, Depends(security)], session: Annotated[AsyncSession, Depends(get_db)]) -> User:
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Couldn't validate credentials"
+        detail="Couldn't validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
     )
-
+    
+    token = auth.credentials
     payload = validate_token(token, env.ACCESS_TOKEN_TYPE)
 
     user_id_str = payload.get("id")

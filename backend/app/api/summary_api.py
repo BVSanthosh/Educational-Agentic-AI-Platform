@@ -5,14 +5,15 @@ from uuid import UUID, uuid4
 from datetime import datetime, timezone
 from typing import Annotated
 from fastapi import APIRouter, UploadFile, BackgroundTasks, HTTPException
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, String, cast
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.services.summary_agent.ingestion_pipeline import embed_and_summarise
 from app.services.summary_agent.summary_agent import get_answer_and_persist
 from app.utils import get_current_usr
 from app.core.database import get_db
 from app.models import User,Space
- 
+  
 router = APIRouter(prefix="/summary", tags=["Summary"])
 
 @router.post("/uploadfile")
@@ -39,9 +40,9 @@ async def upload_summary(file: UploadFile, space_id: UUID, background_task: Back
             .values(
                 data=func.jsonb_set(
                     Space.data,
-                    "{status}",
-                    func.to_jsonb("processing"),
-                    True
+                    cast(["status"], ARRAY(String)),
+                    cast("processing", JSONB),
+                    True  
                 ),
                 updated_at=func.now()
             )
@@ -99,7 +100,7 @@ async def answer_query(query: str, space_id: UUID, current_user: Annotated[User,
         )
         
     user_message = {
-        "id": uuid4(),
+        "id": str(uuid4()),
         "role": "user",
         "content": query,
         "created_at": datetime.now(timezone.utc).isoformat()
@@ -110,10 +111,10 @@ async def answer_query(query: str, space_id: UUID, current_user: Annotated[User,
             update(Space)
             .where(Space.id == space_id, Space.user_id == current_user.id)
             .values(
-                data=func.set_jsonb(
-                    Space.data,
-                    {"messages", -1},
-                    func.to_jsonb(user_message),
+                data=func.jsonb_insert(
+                    Space.data, 
+                    cast(["messages", "-1"], ARRAY(String)),
+                    cast(user_message, JSONB),
                     True
                 ),
                 updated_at=func.now()

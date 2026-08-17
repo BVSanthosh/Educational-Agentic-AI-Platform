@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.responses import StreamingResponse
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, String, cast
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated, AsyncGenerator
 from datetime import datetime, timezone
@@ -13,9 +14,16 @@ from app.models import User, Space
 from app.core.database import get_db, get_checkpointer_pool
 
 router = APIRouter(prefix="/research", tags=["Research"])
- 
+  
 @router.post("/stream")
-async def get_streamed_research(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)], pool: Annotated[AsyncConnectionPool, Depends(get_checkpointer_pool)]) -> StreamingResponse:
+async def get_streamed_research(
+    user_input: str, 
+    space_id: UUID, 
+    current_user: Annotated[User, Depends(get_current_usr)], 
+    session: Annotated[AsyncSession, Depends(get_db)], 
+    pool: Annotated[AsyncConnectionPool, Depends(get_checkpointer_pool)]
+) -> StreamingResponse:
+    
     space_query = select(Space.thread_id).where(Space.id == space_id)
     thread_id = (await session.scalars(space_query)).one_or_none()
 
@@ -25,10 +33,11 @@ async def get_streamed_research(user_input: str, space_id: UUID, current_user: A
             detail="Space not found or unauthorized"
         )
 
+    # Save the user's incoming message instantly
     new_message = {
         "id": str(uuid4()),
         "role": "user",
-        "contet": user_input,
+        "content": user_input, # Fixed typo
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -39,8 +48,8 @@ async def get_streamed_research(user_input: str, space_id: UUID, current_user: A
             .values(
                 data=func.jsonb_insert(
                     Space.data,
-                    "{messages, -1}",
-                    func.to_jsonb(new_message),
+                    cast(["messages", "-1"], ARRAY(String)),
+                    cast(new_message, JSONB),
                     True
                 ),
                 updated_at=func.now()
@@ -56,7 +65,6 @@ async def get_streamed_research(user_input: str, space_id: UUID, current_user: A
             detail=f"Failed to save user message: {str(db_err)}"
         )
         
-    
     stream_generator: AsyncGenerator[str,None] = stream_and_persist_research(
         user_input=user_input,
         thread_id=str(thread_id),
@@ -71,7 +79,7 @@ async def get_streamed_research(user_input: str, space_id: UUID, current_user: A
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
-            "X-Accel-Buffering": "no"  # Critical for Nginx proxy streaming!
+            "X-Accel-Buffering": "no" 
         }
     )
 
@@ -103,9 +111,9 @@ async def create_research_report(user_input: str, space_id: UUID, current_user: 
             .values(
                 data=func.jsonb_insert(
                     Space.data,
-                    "{messages, -1}",
-                    func.to_jsonb(new_message),
-                    True
+                    cast(["messages", "-1"], ARRAY(String)),  
+                    cast(new_message, JSONB),                 
+                    True                                      
                 ),
                 updated_at=func.now()
             )
@@ -127,4 +135,4 @@ async def create_research_report(user_input: str, space_id: UUID, current_user: 
         db=session
     )
 
-    return ResearchOutput(research_report=report_content)      
+    return ResearchOutput(response=report_content)      

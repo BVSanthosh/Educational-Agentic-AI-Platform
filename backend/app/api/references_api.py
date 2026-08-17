@@ -7,14 +7,14 @@ from typing import AsyncGenerator, Annotated
 from uuid import UUID
 from app.schemas import ReferenceOutput
 from app.utils import get_current_usr
-from app.core.database import get_db, get_checkpointer_pool
+from app.core.database import get_db
 from app.models import User, Space
 from app.services import stream_and_persist_reference, get_and_persist_reference
 
 router = APIRouter(prefix="/references", tags=["References"]) 
 
 @router.post("/stream", response_class=StreamingResponse)
-async def get_streamed_references(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)], pool: Annotated[AsyncConnectionPool, Depends(get_checkpointer_pool)]) -> StreamingResponse: 
+async def get_streamed_references(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> StreamingResponse: 
     query = select(Space.thread_id).where(Space.id == space_id)
     thread_id = (await session.scalars(query)).one_or_none()
 
@@ -22,7 +22,7 @@ async def get_streamed_references(user_input: str, space_id: UUID, current_user:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid space id"
-        )
+        ) 
     
     stream_generator: AsyncGenerator[str, None] = stream_and_persist_reference(
         user_input=user_input, 
@@ -43,7 +43,7 @@ async def get_streamed_references(user_input: str, space_id: UUID, current_user:
     )
 
 @router.post("", response_model=ReferenceOutput)
-async def get_references(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)], pool: Annotated[AsyncConnectionPool, Depends(get_checkpointer_pool)]) -> ReferenceOutput | None: 
+async def get_references(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> ReferenceOutput | None: 
     query = select(Space.thread_id).where(Space.id == space_id)
     thread_id = (await session.scalars(query)).one_or_none()
 

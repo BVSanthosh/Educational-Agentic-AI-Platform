@@ -12,7 +12,7 @@ from app.utils import get_current_usr
 REFERENCE = "Reference"
 RESEEARCH = "Research"
 SUMMARY = "Summary"
-
+ 
 router = APIRouter(prefix="/space", tags=["Spaces"]) 
 
 @router.get("/{space_id}", response_model=SpaceResponse)
@@ -41,13 +41,16 @@ async def create_space(paylaod: SpaceBase, session: Annotated[AsyncSession, Depe
         **paylaod.model_dump(),
         user_id=current_user.id
     )
-
+    
+    new_data = {}
     if paylaod.tool_type == RESEEARCH:
-        new_space.data["messages"] = []
+        new_data["messages"] = []
     elif paylaod.tool_type == SUMMARY:
-        new_space.data["messages"] = []
-        new_space.data["summary"] = ""
-        new_space.data["summary_progress"] = ""
+        new_data["messages"] = []
+        new_data["summary"] = ""
+        new_data["status"] = ""
+        
+    new_space.data = new_data
 
     session.add(new_space)
     await session.commit()

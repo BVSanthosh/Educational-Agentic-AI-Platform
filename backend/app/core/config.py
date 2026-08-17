@@ -45,6 +45,12 @@ class Settings(BaseSettings):
     GOOGLE_CLIENT_ID: str = "client_id"
     GOOGLE_CLIENT_SECRET:str = "client_secret"
     GOOGLE_REDIRECT_URI: str = "http://localhost:5173/auth/callback/google"
+    
+    # AWS
+    AWS_ACCESS_KEY_ID: str = "your_access_key"
+    AWS_SECRET_ACCESS_KEY: str = "your_secret_key"
+    AWS_REGION: str = "ap-southeast-1"
+    AWS_S3_BUCKET_NAME: str = "research-agent-reports"
 
     @property
     def DATABASE_URL(self) -> str:

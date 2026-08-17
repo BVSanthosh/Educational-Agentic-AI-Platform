@@ -33,7 +33,7 @@ class Space(Base):
     data: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default={}, server_default=text("'{}'::jsonb")
     )
-    create_at: Mapped[datetime] = mapped_column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
     updated_at: Mapped[datetime] = mapped_column(

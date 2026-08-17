@@ -9,7 +9,7 @@ from app.core.database import engine
 from sqlalchemy import text
 from app.api import (
     reference_router,
-    research_router,
+    research_router, 
     summary_router,
     space_router,
     user_router
@@ -31,25 +31,34 @@ async def lifespan(app: FastAPI):
         raise e
 
     conn_str = env.DATABASE_URL.replace("postgresql+asyncpg://", "postgresql://")
-
-    checkpointer_pool: AsyncConnectionPool[Any] = AsyncConnectionPool(
+    
+    # 1. Initialize and open the connection pool
+    pool: AsyncConnectionPool[Any] = AsyncConnectionPool(
         conninfo=conn_str,
         max_size=20,
+        open=False,
         kwargs={"autocommit": True}
     )
-    await checkpointer_pool.open()
-
-    async with checkpointer_pool.connection() as conn:
+    await pool.open()
+    
+    # 2. Run migrations/setup for the checkpointer tables
+    async with pool.connection() as conn:
         checkpointer = AsyncPostgresSaver(conn)
         await checkpointer.setup()
-        
-    init_reference_agent(checkpointer_pool)
-    init_research_agent(checkpointer_pool)
+    
+    # 3. Store on app.state (accessible globally via any Request)
+    app.state.checkpointer_pool = pool
+    
+    # Initialize your agents using the pool
+    init_reference_agent(pool)
+    init_research_agent(pool)
 
     yield 
 
-    if checkpointer_pool:
-        await checkpointer_pool.close()
+    # 4. Graceful shutdown
+    if hasattr(app.state, "checkpointer_pool") and app.state.checkpointer_pool:
+        print("Closing checkpointer pool...")
+        await app.state.checkpointer_pool.close()
 
     print("closing database connection...")
     await engine.dispose()

@@ -3,7 +3,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select 
 from pwdlib import PasswordHash
 from app.core import get_db, env
 from app.models import User
@@ -25,21 +25,21 @@ def set_cookies(res: Response, refresh_token: str):
         max_age=env.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60
     )
 
-@router.get("/login", response_model=AuthResponse)
+@router.post("/login", response_model=AuthResponse)
 async def login(cred: LoginCredentials, res: Response, session: Annotated[AsyncSession, Depends(get_db)]):
     query = select(User).where(User.username == cred.username)
     result = await session.scalars(query)
     user = result.one_or_none()
 
-    if not user or not user.password_hash != None:
+    if (
+        not user
+        or not user.password_hash
+        or not password_hash.verify(cred.password, user.password_hash)
+    ):
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid login credentials"
-        )
-    elif password_hash.verify(cred.password, user.password_hash):
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid login credentials"
+            detail="Incorrect username or password",
+            headers={"WWW-Authenticate": "Bearer"},
         )
 
     tokens = create_tokens(user)
@@ -74,7 +74,7 @@ async def signup(cred: SignUpCredentials, res: Response, session: Annotated[Asyn
 
     user_data = cred.model_dump()
     raw_password = user_data.pop("password")
-
+    print(f"PASSWORD: {raw_password}")
     new_user = User(
         **user_data,
         password_hash=password_hash.hash(raw_password)
@@ -99,9 +99,10 @@ async def refresh_access_token(res: Response, session: Annotated[AsyncSession, D
     if not refresh_token:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Refresh token missing"
+            detail="Refresh token missing",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-
+        
     payload = validate_token(refresh_token, env.REFRESH_TOKEN_TYPE)
     username = payload.get("sub")
 
@@ -111,10 +112,12 @@ async def refresh_access_token(res: Response, session: Annotated[AsyncSession, D
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="User not found"
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"},
         )
-
+        
     new_token = create_tokens(user)
+
     set_cookies(res, new_token.access_token)
 
     return new_token.refresh_token
