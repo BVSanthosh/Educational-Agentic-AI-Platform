@@ -1,5 +1,7 @@
 from pydantic import BaseModel
 
-class SummaryInput(BaseModel):
-    query: str
-    doc_id: str
+class SummaryRequest(BaseModel):
+    user_input: str
+    
+class SummaryResponse(BaseModel):
+    response: str

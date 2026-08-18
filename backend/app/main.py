@@ -12,7 +12,8 @@ from app.api import (
     research_router, 
     summary_router,
     space_router,
-    user_router
+    user_router, 
+    document_router
 )
 from app.services import (
     init_reference_agent,
@@ -80,6 +81,7 @@ app.add_middleware(
 
 app.include_router(user_router)
 app.include_router(space_router)
+app.include_router(document_router)
 app.include_router(reference_router)
 app.include_router(research_router)
 app.include_router(summary_router)

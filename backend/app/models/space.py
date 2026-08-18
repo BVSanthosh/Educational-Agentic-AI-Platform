@@ -8,7 +8,7 @@ from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.core.database import Base
  
-if TYPE_CHECKING: 
+if TYPE_CHECKING:  
     from app.models.user import User
     from app.models.document import Document
 
@@ -24,7 +24,7 @@ class Space(Base):
     thread_id: Mapped[UUID] = mapped_column(
         UUID, nullable=False, default=uuid.uuid4
     )
-    tool_type: Mapped[str] = mapped_column(
+    tool: Mapped[str] = mapped_column(
         String(50), nullable=False, index=True
     )
     name: Mapped[str] = mapped_column(

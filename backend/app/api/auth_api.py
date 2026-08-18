@@ -10,7 +10,7 @@ from app.models import User
 from app.schemas import LoginCredentials, SignUpCredentials, AuthResponse, GoogleAuthRequest
 from app.utils import create_tokens, validate_token
 
-router = APIRouter(prefix="/auth", tags=["Auth"])
+router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
 password_hash = PasswordHash.recommended()
 

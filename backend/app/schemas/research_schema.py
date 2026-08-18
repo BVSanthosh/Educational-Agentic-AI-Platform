@@ -1,11 +1,11 @@
 from pydantic import BaseModel
 from typing import Literal
 
-class ResearchInput(BaseModel): 
-    topic: str
+class ResearchRequest(BaseModel): 
+    user_input: str
 
 # Not being used for now since only a string is being returned from the backend
-class ResearchOutput(BaseModel):
+class ResearchResponse(BaseModel):
     response: str
 
 class OutlineSchema(BaseModel):

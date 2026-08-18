@@ -2,18 +2,18 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from uuid import UUID
-from app.schemas import SpaceResponse, SpaceBase, SpacesResponse
+from app.schemas import SpaceResponse, SpaceBase, CreateSpace, SpacesRequest
 from app.core import get_db
 from app.models import Space, User
 from app.utils import get_current_usr 
 
-REFERENCE = "Reference"
-RESEEARCH = "Research"
-SUMMARY = "Summary"
- 
-router = APIRouter(prefix="/space", tags=["Spaces"]) 
+REFERENCE = "reference"
+RESEEARCH = "research"
+SUMMARY = "summary"
+  
+router = APIRouter(prefix="/api/space", tags=["Spaces"]) 
 
 @router.get("/{space_id}", response_model=SpaceResponse)
 async def get_space(space_id: UUID, session: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_usr)]):
@@ -28,24 +28,28 @@ async def get_space(space_id: UUID, session: Annotated[AsyncSession, Depends(get
     
     return space
 
-@router.get("/", response_model=list[SpacesResponse])
-async def get_spaces(tool_type: str, session:Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_usr)]):
-    query = select(Space).where(Space.user_id == current_user.id, Space.tool_type == tool_type).order_by(Space.create_at)
+@router.get("/", response_model=list[SpaceBase])
+async def get_spaces(session:Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_usr)], tool: Optional[str] = None):
+    query = select(Space).where(Space.user_id == current_user.id).order_by(Space.created_at)
+    
+    if tool:
+        query = query.where(Space.tool == tool)
+    
     spaces = (await session.scalars(query)).all()
 
     return spaces
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
-async def create_space(paylaod: SpaceBase, session: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_usr)]):
+@router.post("/", response_model=SpaceBase, status_code=status.HTTP_201_CREATED)
+async def create_space(paylaod: CreateSpace, session: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_usr)]):
     new_space = Space(
         **paylaod.model_dump(),
         user_id=current_user.id
     )
     
     new_data = {}
-    if paylaod.tool_type == RESEEARCH:
+    if paylaod.tool == RESEEARCH:
         new_data["messages"] = []
-    elif paylaod.tool_type == SUMMARY:
+    elif paylaod.tool == SUMMARY:
         new_data["messages"] = []
         new_data["summary"] = ""
         new_data["status"] = ""

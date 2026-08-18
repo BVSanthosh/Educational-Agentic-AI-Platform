@@ -13,8 +13,9 @@ from app.services.summary_agent.summary_agent import get_answer_and_persist
 from app.utils import get_current_usr
 from app.core.database import get_db
 from app.models import User,Space
+from app.schemas import SummaryRequest, SummaryResponse
   
-router = APIRouter(prefix="/summary", tags=["Summary"])
+router = APIRouter(prefix="/api/summary", tags=["Summary"])
 
 @router.post("/uploadfile")
 async def upload_summary(file: UploadFile, space_id: UUID, background_task: BackgroundTasks, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]):
@@ -88,8 +89,8 @@ async def get_space_status(space_id: UUID, current_user: Annotated[User, Depends
         "messages": space.data.get("messages", [])
     }
             
-@router.post("/query")
-async def answer_query(query: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]):
+@router.post("/{space_id}/query", response_model=SummaryResponse)
+async def answer_query(space_id: UUID, body: SummaryRequest, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]):
     space_query = select(Space).where(Space.id == space_id, Space.user_id == current_user.id)
     space = (await session.scalars(space_query)).one_or_none()
     
@@ -102,7 +103,7 @@ async def answer_query(query: str, space_id: UUID, current_user: Annotated[User,
     user_message = {
         "id": str(uuid4()),
         "role": "user",
-        "content": query,
+        "content": body.user_input,
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -130,10 +131,10 @@ async def answer_query(query: str, space_id: UUID, current_user: Annotated[User,
         )
 
     response = await get_answer_and_persist(
-        query, 
+        body.user_input, 
         current_user.id, 
         space_id, 
         session
     )
     
-    return response
+    return SummaryResponse(response=response)

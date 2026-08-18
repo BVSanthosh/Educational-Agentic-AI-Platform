@@ -1,20 +1,19 @@
 from fastapi import APIRouter, HTTPException, Depends, status
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
-from psycopg_pool import AsyncConnectionPool
 from sqlalchemy import select
 from typing import AsyncGenerator, Annotated
 from uuid import UUID
-from app.schemas import ReferenceOutput
+from app.schemas import ReferenceResponse, ReferenceRequest
 from app.utils import get_current_usr
 from app.core.database import get_db
 from app.models import User, Space
 from app.services import stream_and_persist_reference, get_and_persist_reference
 
-router = APIRouter(prefix="/references", tags=["References"]) 
+router = APIRouter(prefix="/api/references", tags=["References"]) 
 
-@router.post("/stream", response_class=StreamingResponse)
-async def get_streamed_references(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> StreamingResponse: 
+@router.post("/{space_id}/stream", response_class=StreamingResponse)
+async def get_streamed_references(space_id: UUID, body: ReferenceRequest, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> StreamingResponse: 
     query = select(Space.thread_id).where(Space.id == space_id)
     thread_id = (await session.scalars(query)).one_or_none()
 
@@ -25,7 +24,7 @@ async def get_streamed_references(user_input: str, space_id: UUID, current_user:
         ) 
     
     stream_generator: AsyncGenerator[str, None] = stream_and_persist_reference(
-        user_input=user_input, 
+        user_input=body.user_input, 
         thread_id=str(thread_id), 
         space_id=space_id, 
         user_id=current_user.id, 
@@ -42,8 +41,8 @@ async def get_streamed_references(user_input: str, space_id: UUID, current_user:
         }
     )
 
-@router.post("", response_model=ReferenceOutput)
-async def get_references(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> ReferenceOutput | None: 
+@router.post("/{space_id}", response_model=ReferenceResponse)
+async def get_references(space_id: UUID, body: ReferenceRequest, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> ReferenceOutput | None: 
     query = select(Space.thread_id).where(Space.id == space_id)
     thread_id = (await session.scalars(query)).one_or_none()
 
@@ -53,8 +52,8 @@ async def get_references(user_input: str, space_id: UUID, current_user: Annotate
                 detail="Invalid space id"
             )
     
-    response: ReferenceOutput | None = await get_and_persist_reference(
-        user_input=user_input, 
+    response: ReferenceResponse | None = await get_and_persist_reference(
+        user_input=body.user_input, 
         thread_id=str(thread_id), 
         space_id=space_id, 
         user_id=current_user.id, 

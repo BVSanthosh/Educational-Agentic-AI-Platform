@@ -12,7 +12,7 @@ from langchain_tavily import TavilySearch
 from typing import Literal, AsyncGenerator, cast, Any
 from app.core.config import env
 from app.services.reference_agent.reference_prompt import get_reference_prompt
-from app.schemas import ReferenceOutput, TavilySearchInput, TavilySearchOutput, TavilySearchError
+from app.schemas import ReferenceResponse, TavilySearchInput, TavilySearchOutput, TavilySearchError
 from app.models import Space
 
 SYSTEM_PROMPT = get_reference_prompt()
@@ -82,13 +82,13 @@ def init_reference_agent(pool: AsyncConnectionPool[Any]):
         model=llm,
         tools=[web_search],
         system_prompt=SYSTEM_PROMPT, 
-        response_format=ReferenceOutput,
+        response_format=ReferenceResponse,
         middleware=agent_middleware,
         checkpointer=checkpointer
     )
 
 async def stream_and_persist_reference(user_input: str, thread_id: str, space_id: UUID, user_id: UUID, db: AsyncSession) -> AsyncGenerator[str, None]:
-    final_output: ReferenceOutput | None = None
+    final_output: ReferenceResponse | None = None
     
     if reference_agent is None:
         raise HTTPException(
@@ -138,8 +138,8 @@ async def stream_and_persist_reference(user_input: str, thread_id: str, space_id
             await db.rollback()
             yield f"\n[Warning: Failed to persist response to database: {str(db_err)}]"
 
-async def get_and_persist_reference(user_input: str, thread_id: str, space_id: UUID, user_id: UUID, db: AsyncSession) -> ReferenceOutput:
-    final_output: ReferenceOutput | None = None
+async def get_and_persist_reference(user_input: str, thread_id: str, space_id: UUID, user_id: UUID, db: AsyncSession) -> ReferenceResponse:
+    final_output: ReferenceResponse | None = None
 
     if reference_agent is None:
         raise HTTPException(

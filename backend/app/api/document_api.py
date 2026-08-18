@@ -10,7 +10,7 @@ from app.utils.deps import get_current_usr
 from app.utils.s3_client import read_document_from_s3
 from app.schemas import DocumentResponse
 
-router = APIRouter(prefix="/documents", tags=["Documents"])
+router = APIRouter(prefix="/api/documents", tags=["Documents"])
 
 @router.get("/{document_id}", response_model=DocumentResponse)
 async def get_document(

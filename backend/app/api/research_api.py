@@ -5,23 +5,21 @@ from sqlalchemy.dialects.postgresql import JSONB, ARRAY
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Annotated, AsyncGenerator
 from datetime import datetime, timezone
-from psycopg_pool import AsyncConnectionPool
 from uuid import UUID, uuid4
-from app.schemas import  ResearchOutput
+from app.schemas import  ResearchResponse, ResearchRequest
 from app.services import stream_and_persist_research, get_and_persist_research
 from app.utils import get_current_usr
 from app.models import User, Space
-from app.core.database import get_db, get_checkpointer_pool
+from app.core.database import get_db
 
-router = APIRouter(prefix="/research", tags=["Research"])
+router = APIRouter(prefix="/api/research", tags=["Research"])
   
-@router.post("/stream")
+@router.post("/{space_id}/stream")
 async def get_streamed_research(
-    user_input: str, 
     space_id: UUID, 
+    body: ResearchRequest,
     current_user: Annotated[User, Depends(get_current_usr)], 
-    session: Annotated[AsyncSession, Depends(get_db)], 
-    pool: Annotated[AsyncConnectionPool, Depends(get_checkpointer_pool)]
+    session: Annotated[AsyncSession, Depends(get_db)]
 ) -> StreamingResponse:
     
     space_query = select(Space.thread_id).where(Space.id == space_id)
@@ -37,7 +35,7 @@ async def get_streamed_research(
     new_message = {
         "id": str(uuid4()),
         "role": "user",
-        "content": user_input, # Fixed typo
+        "content": body.user_input, # Fixed typo
         "created_at": datetime.now(timezone.utc).isoformat()
     }
     
@@ -66,7 +64,7 @@ async def get_streamed_research(
         )
         
     stream_generator: AsyncGenerator[str,None] = stream_and_persist_research(
-        user_input=user_input,
+        user_input=body.user_input,
         thread_id=str(thread_id),
         space_id=space_id,
         user_id=current_user.id,
@@ -83,7 +81,7 @@ async def get_streamed_research(
         }
     )
 
-@router.post("", response_model=ResearchOutput)
+@router.post("", response_model=ResearchResponse)
 async def create_research_report(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> ResearchOutput:
     space_query = select(Space.thread_id).where(
         Space.id == space_id, 
@@ -135,4 +133,4 @@ async def create_research_report(user_input: str, space_id: UUID, current_user: 
         db=session
     )
 
-    return ResearchOutput(response=report_content)      
+    return ResearchResponse(response=report_content)      

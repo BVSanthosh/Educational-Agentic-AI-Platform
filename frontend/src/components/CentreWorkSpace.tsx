@@ -1,0 +1,342 @@
+import { useState } from 'react';
+import { useAppStore } from '../store/useAppStore';
+import { UploadCloud, Send, Bot, FileText, ArrowRight, User, BookOpen, ExternalLink } from 'lucide-react';
+import type { Message } from '../types';
+
+interface Resource {
+  tile: string;
+  url: string;
+}
+
+interface References {
+  description: string;
+  references: Resource[] | null;
+}
+
+export default function CentreWorkspace() {
+  const { activeTool, activeSessionId, sessions, updateSessionState, addMessage, token, ensureReferenceSpaceExists } = useAppStore();
+  const [inputValue, setInputValue] = useState('');
+  const [isUploading, setIsUploading] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
+
+  const [referenceData, setReferenceData] = useState<References | null>(null);
+
+  // Determine the active session (Reference tool doesn't use sessions array)
+  const activeSession = activeTool !== 'reference' && activeSessionId
+    ? sessions[activeTool].find(s => s.id === activeSessionId)
+    : null;
+
+  // --- MOCK ACTION HANDLERS ---
+  const handleSimulateUpload = () => {
+    if (!activeSession) return;
+    setIsUploading(true);
+    console.log("Sending file to backend");
+    setTimeout(() => {
+      setIsUploading(false);
+      updateSessionState(activeTool as 'summary' | 'research', activeSession.id, 'chat');
+    }, 1500);
+  };
+
+  const handleSendMessage = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!inputValue.trim() || isProcessing) return;
+
+    const query = inputValue;
+    setInputValue('');
+    setIsProcessing(true);
+
+    try {
+      // -------------------------------------------------------------
+      // CASE A: Reference Generation Tool
+      // -------------------------------------------------------------
+      if (activeTool === 'reference') {
+        try {
+          const spaceId = await ensureReferenceSpaceExists();
+          if (!spaceId) throw new Error("Could not initialize the reference space.");
+
+          // Hit the new path-based endpoint!
+          const res = await fetch(`http://localhost:8000/api/references/${spaceId}`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json', 
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            credentials: 'include',
+            // Updated to match backend's ReferenceRequest schema
+            body: JSON.stringify({ user_input: query }) 
+          });
+
+          if (!res.ok) throw new Error('Failed to generate references');
+          
+          // Wait for the full JSON response, then render the cards perfectly
+          const data: References = await res.json();
+          setReferenceData(data);
+          
+        } catch (err) {
+          console.error('Reference generation error:', err);
+        } finally {
+          setIsProcessing(false);
+        }
+      }
+      
+      // -------------------------------------------------------------
+      // CASE B: Summary & Research Tools (Streaming Chat)
+      // -------------------------------------------------------------
+      else if (activeSession) {
+        const spaceId = activeSession.id;
+
+        const userMessage: Message = {
+          id: crypto.randomUUID(),
+          sender: 'user',
+          content: query,
+        };
+        addMessage(activeTool, spaceId, userMessage);
+
+        const agentMessageId = crypto.randomUUID();
+        const initialAgentMessage: Message = {
+          id: agentMessageId,
+          sender: 'agent',
+          content: '',
+        };
+        addMessage(activeTool, spaceId, initialAgentMessage);
+
+        const response = await fetch(`http://localhost:8000/api/${activeTool}/${spaceId}/stream`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          credentials: 'include',
+          body: JSON.stringify({ user_input: query })
+        });
+
+        if (!response.ok || !response.body) {
+          throw new Error('Failed to stream response from backend');
+        }
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder();
+        let accumulatedText = '';
+
+        setIsProcessing(false);
+
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+
+          const chunk = decoder.decode(value, { stream: true });
+          accumulatedText += chunk;
+
+          useAppStore.setState((state) => ({
+            sessions: {
+              ...state.sessions,
+              [activeTool]: state.sessions[activeTool].map((session) => 
+                session.id === spaceId 
+                  ? {
+                      ...session,
+                      messages: session.messages?.map((msg) =>
+                        msg.id === agentMessageId ? { ...msg, content: accumulatedText } : msg
+                      ),
+                    }
+                  : session
+              ),
+            },
+          }));
+        }
+      }
+    } catch (error) {
+      console.error("API request error:", error);
+      setIsProcessing(false);
+    }
+  };
+
+  // --- VIEW 1: Empty State ---
+  if (activeTool !== 'reference' && !activeSessionId) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center text-center p-6 bg-gray-50/50">
+        <div className="w-16 h-16 bg-blue-100 text-blue-600 rounded-2xl flex items-center justify-center mb-4">
+          <FileText size={32} />
+        </div>
+        <h3 className="text-xl font-semibold text-gray-800 mb-2">No Space Selected</h3>
+        <p className="text-gray-500 max-w-sm">
+          Please select an existing {activeTool} space from the sidebar, or create a new one to get started.
+        </p>
+      </div>
+    );
+  }
+
+  // --- VIEW 2: File Upload State ---
+  if (activeSession?.state === 'upload') {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center p-6">
+        <div className="max-w-md w-full">
+          <div className="text-center mb-6">
+            <h3 className="text-2xl font-bold text-gray-800">Upload your Document</h3>
+            <p className="text-gray-500 mt-2">Initialize your {activeTool} space with a source file.</p>
+          </div>
+          
+          <button 
+            onClick={handleSimulateUpload}
+            disabled={isUploading}
+            className="w-full border-2 border-dashed border-gray-300 rounded-2xl p-12 flex flex-col items-center justify-center bg-gray-50 hover:bg-gray-100 hover:border-blue-400 transition-all group disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <div className="w-16 h-16 bg-white shadow-sm rounded-full flex items-center justify-center mb-4 group-hover:scale-105 transition-transform">
+              <UploadCloud size={32} className="text-blue-500" />
+            </div>
+            <p className="font-medium text-gray-700">
+              {isUploading ? 'Uploading & Processing...' : 'Click or drag file to upload'}
+            </p>
+            <p className="text-sm text-gray-400 mt-2">Supports PDF, DOCX, or TXT</p>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const currentMessages = activeSession?.messages || [];
+
+  // --- VIEW 3: Chat Interface (Reference Tool or Active Chat Session) ---
+  return (
+    <div className="flex-1 flex flex-col min-h-0 relative">
+      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+        
+        {/* REFERENCE TOOL VIEW */}
+        {activeTool === 'reference' ? (
+          <div className="max-w-3xl mx-auto space-y-6 w-full">
+            <div className="bg-blue-50 border border-blue-100 p-6 rounded-2xl flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-blue-600 flex items-center justify-center text-white shrink-0">
+                <BookOpen size={20} />
+              </div>
+              <div>
+                <h3 className="font-semibold text-blue-900 text-lg">Reference Generator</h3>
+                <p className="text-blue-700 text-sm mt-1">
+                  Enter any academic topic or keyword below to compile formal references and citations.
+                </p>
+              </div>
+            </div>
+
+            {referenceData && (
+              <div className="space-y-6">
+                {/* Description Box */}
+                {referenceData.description && (
+                  <div className="bg-white border border-gray-200 p-5 rounded-2xl shadow-sm text-gray-700">
+                    <h4 className="font-semibold text-gray-900 mb-1 text-sm uppercase tracking-wider text-blue-600">Overview</h4>
+                    <p className="text-sm leading-relaxed">{referenceData.description}</p>
+                  </div>
+                )}
+
+                {/* References List */}
+                {referenceData.references && referenceData.references.length > 0 && (
+                  <div className="space-y-4">
+                    <h4 className="font-semibold text-gray-800 text-lg">
+                      Generated Resources ({referenceData.references.length})
+                    </h4>
+                    {referenceData.references.map((ref, index) => (
+                      <div key={index} className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm flex items-center justify-between gap-4 group hover:border-blue-300 transition-colors">
+                        <div className="space-y-1 min-w-0">
+                          <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
+                            Ref [{index + 1}]
+                          </span>
+                          <h5 className="font-semibold text-gray-900 text-base truncate">{ref.tile}</h5>
+                          <a 
+                            href={ref.url} 
+                            target="_blank" 
+                            rel="noopener noreferrer" 
+                            className="text-xs text-blue-600 hover:underline truncate block"
+                          >
+                            {ref.url}
+                          </a>
+                        </div>
+                        <a 
+                          href={ref.url} 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="p-2.5 bg-gray-50 text-gray-600 group-hover:bg-blue-600 group-hover:text-white rounded-xl transition-all shrink-0"
+                          title="Open Resource"
+                        >
+                          <ExternalLink size={18} />
+                        </a>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        ) : (
+          
+          /* SUMMARY & RESEARCH CHAT VIEW */
+          <div className="space-y-6">
+            <div className="flex gap-4 max-w-3xl">
+              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0 mt-1">
+                <Bot size={18} className="text-white" />
+              </div>
+              <div className="flex flex-col gap-1">
+                <span className="font-semibold text-gray-800 text-sm">EduAgent</span>
+                <div className="text-gray-700 bg-white border border-gray-100 shadow-sm p-4 rounded-2xl rounded-tl-none">
+                  I have processed your document for this {activeTool} space. What would you like to know?
+                </div>
+              </div>
+            </div>
+
+            {currentMessages.map((msg) => (
+              <div key={msg.id} className={`flex gap-4 max-w-3xl ${msg.sender === 'user' ? 'ml-auto flex-row-reverse' : ''}`}>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 ${
+                  msg.sender === 'user' ? 'bg-gray-800 text-white' : 'bg-blue-600 text-white'
+                }`}>
+                  {msg.sender === 'user' ? <User size={18} /> : <Bot size={18} />}
+                </div>
+                <div className="flex flex-col gap-1">
+                  <span className={`font-semibold text-sm ${msg.sender === 'user' ? 'text-right' : 'text-left'} text-gray-800`}>
+                    {msg.sender === 'user' ? 'You' : 'EduAgent'}
+                  </span>
+                  <div className={`p-4 rounded-2xl shadow-sm text-gray-700 ${
+                    msg.sender === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-gray-100 rounded-tl-none'
+                  }`}>
+                    {msg.content}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {isProcessing && (
+          <div className="flex gap-4 max-w-3xl items-center text-gray-400 text-sm italic">
+            <Bot size={18} className="animate-spin text-blue-600" />
+            EduAgent is generating response...
+          </div>
+        )}
+      </div>
+
+      {/* Fixed Input Area */}
+      <div className="p-4 bg-white border-t border-gray-100 shrink-0">
+        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto relative flex items-center">
+          <input 
+            type="text"
+            value={inputValue}
+            onChange={(e) => setInputValue(e.target.value)}
+            placeholder={
+              activeTool === 'reference' 
+                ? "Enter a topic to generate references..." 
+                : activeTool === 'summary'
+                  ? "Ask a question about the document..."
+                  : "What topic do you want to research about..."
+            }
+            className="w-full pl-5 pr-14 py-4 bg-gray-50 border border-gray-200 rounded-2xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all"
+          />
+          <button 
+            type="submit"
+            disabled={!inputValue.trim() || isProcessing}
+            className="absolute right-3 p-2 bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {activeTool === 'reference' ? <ArrowRight size={20} /> : <Send size={20} />}
+          </button>
+        </form>
+        <p className="text-center text-xs text-gray-400 mt-3">
+          AI agents can make mistakes. Please verify important information.
+        </p>
+      </div>
+    </div>
+  );
+}
