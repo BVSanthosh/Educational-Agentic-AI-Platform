@@ -36,6 +36,8 @@ async def get_spaces(session:Annotated[AsyncSession, Depends(get_db)], current_u
         query = query.where(Space.tool == tool)
     
     spaces = (await session.scalars(query)).all()
+    
+    print(spaces)
 
     return spaces
 
@@ -60,7 +62,7 @@ async def create_space(paylaod: CreateSpace, session: Annotated[AsyncSession, De
     await session.commit()
     await session.refresh(new_space)
 
-    return {"detail": "Space created successfully"}
+    return new_space
 
 @router.put("/{space_id}")
 async def update_space(space_id: UUID, payload: Dict[Any, str], session: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_usr)]):

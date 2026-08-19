@@ -1,7 +1,33 @@
 import aioboto3
-from app.core.config import env
+import os
+from app.core.config import env 
 from uuid import uuid4
+import aiofiles
 
+# TEMPORARY MOCK until AWS is configured
+async def upload_document_to_s3(content: str, folder: str = "research_reports") -> dict:
+    os.makedirs(f"./temp_storage/{folder}", exist_ok=True)
+    file_name = f"{folder}/{uuid4()}.md"
+    file_path = f"./temp_storage/{file_name}"
+    
+    content_bytes = content.encode("utf-8")
+    
+    async with aiofiles.open(file_path, 'wb') as out_file:
+        await out_file.write(content_bytes)
+        
+    return {
+        "s3_key": file_path, 
+        "url": f"http://localhost:8000/{file_path}", # Fake local URL
+        "file_size_bytes": len(content_bytes),
+        "mime_type": "text/markdown"
+    }
+
+async def read_document_from_s3(s3_key: str) -> str:
+    async with aiofiles.open(s3_key, 'rb') as in_file:
+        content_bytes = await in_file.read()
+        return content_bytes.decode("utf-8")
+
+"""
 async def upload_document_to_s3(content: str, folder: str = "research_reports") -> dict:
     session = aioboto3.Session()
     file_name = f"{folder}/{uuid4()}.md"
@@ -31,9 +57,8 @@ async def upload_document_to_s3(content: str, folder: str = "research_reports") 
             "file_size_bytes": file_size_bytes,
             "mime_type": "text/markdown"
         }
-        
+
 async def read_document_from_s3(s3_key: str) -> str:
-    """Fetches the complete text content of an S3 object into memory."""
     session = aioboto3.Session()
     bucket_name = env.AWS_S3_BUCKET_NAME
     
@@ -46,3 +71,4 @@ async def read_document_from_s3(s3_key: str) -> str:
         async with response["Body"] as body:
             content_bytes = await body.read()
             return content_bytes.decode("utf-8")
+"""  

@@ -63,6 +63,8 @@ async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id
         config=config,
         version="v2"
     ) 
+    
+    is_writing_report = False
      
     try:
         async for event in stream:
@@ -75,27 +77,61 @@ async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id
             
             # 1. Emitting Tool Progress
             if event_type == "on_tool_start" and name == "write_research_report":
+                is_writing_report = True
                 yield f"data: {json.dumps({'type': 'progress', 'message': 'Gathering sources and writing report...'})}\n\n"
 
             # 2. Emitting Tool Completion & Document Link
             elif event_type == "on_tool_end" and name == "write_research_report":
+                is_writing_report = False
                 try:
-                    tool_output = json.loads(event_data.get("output", "{}"))
-                    doc_payload = {
-                        "type": "document_ready", 
-                        "document_id": tool_output.get("document_id"),
-                    }
-                    yield f"data: {json.dumps(doc_payload)}\n\n"
-                except json.JSONDecodeError:
+                    # 1. Grab the output object (which is a ToolMessage)
+                    output_obj = event_data.get("output")
+                    output_str = "{}"
+                    
+                    if output_obj is not None:
+                        # 1. If output_obj itself is already a string
+                        if isinstance(output_obj, str):
+                            output_str = output_obj
+                        # 2. If it's a dictionary
+                        elif isinstance(output_obj, dict):
+                            output_str = str(output_obj.get("content", "{}"))
+
+                    # Parse the string into JSON
+                    tool_output = json.loads(output_str)
+                    
+                    if tool_output.get("status") == "success":
+                        doc_payload = {
+                            "type": "document_ready", 
+                            "document_id": tool_output.get("document_id"),
+                        }
+                        yield f"data: {json.dumps(doc_payload)}\n\n"
+                    else:
+                        err_msg = tool_output.get("error", "Unknown tool error")
+                        yield f"data: {json.dumps({'type': 'error', 'message': f'Tool Failed: {err_msg}'})}\n\n"
+                except Exception as e:
+                    print(f"Failed to parse tool output: {e}")
                     pass
             
             # 3. Emitting LLM Chat Tokens
-            elif event_type == "on_chat_model_stream" and "interviewer" in event.get("tags", []):
+            elif event_type == "on_chat_model_stream" and not is_writing_report:
                 chunk = event_data.get("chunk")
                 if chunk and hasattr(chunk, "content") and chunk.content:
-                    text_delta = str(chunk.content)
-                    accumulated_response.append(text_delta)
-                    yield f"data: {json.dumps({'type': 'token', 'content': text_delta})}\n\n"
+                    text_delta = ""
+                    
+                    # Safely extract text whether it is a string or a list of dictionaries
+                    if isinstance(chunk.content, str):
+                        text_delta = chunk.content
+                    elif isinstance(chunk.content, list):
+                        for block in chunk.content:
+                            if isinstance(block, dict) and "text" in block:
+                                text_delta += block["text"]
+                            elif isinstance(block, str):
+                                text_delta += block
+                                
+                    # Only yield if we actually extracted text
+                    if text_delta:
+                        accumulated_response.append(text_delta)
+                        yield f"data: {json.dumps({'type': 'token', 'content': text_delta})}\n\n"
 
     except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'message': f'Streaming Error: {str(e)}'})}\n\n"
@@ -115,6 +151,7 @@ async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id
                 "content": final_text, 
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
+            
             query = (
                 update(Space)
                 .where(Space.id == space_id, Space.user_id == user_id)

@@ -4,7 +4,7 @@ from typing import Union, Literal
 class ReferenceRequest(BaseModel):
     user_input: str
 class Resource(BaseModel):
-    tile: str
+    title: str
     url: str
 
 class ReferenceResponse(BaseModel):

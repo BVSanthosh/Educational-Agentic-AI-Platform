@@ -31,7 +31,6 @@ async def get_streamed_research(
             detail="Space not found or unauthorized"
         )
 
-    # Save the user's incoming message instantly
     new_message = {
         "id": str(uuid4()),
         "role": "user",
@@ -82,7 +81,7 @@ async def get_streamed_research(
     )
 
 @router.post("", response_model=ResearchResponse)
-async def create_research_report(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> ResearchOutput:
+async def create_research_report(user_input: str, space_id: UUID, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> ResearchResponse:
     space_query = select(Space.thread_id).where(
         Space.id == space_id, 
         Space.user_id == current_user.id

@@ -19,7 +19,8 @@ export default function NewSpaceModal() {
     
     setIsSubmitting(true);
     // Call the async store function (hits your FastAPI backend)
-    await createNewSpace(selectedTool, spaceName);
+    const uploadStatus: 'chat' | 'upload' = selectedTool === "summary" ? "upload" : "chat"
+    await createNewSpace(selectedTool, spaceName, uploadStatus);
     
     // Reset local state after successful creation 
     // (The modal is automatically closed by the Zustand store logic)

@@ -30,6 +30,9 @@ class Space(Base):
     name: Mapped[str] = mapped_column(
         String(255), nullable=False, index=True
     )
+    upload_status: Mapped[str] = mapped_column(
+        String(50), nullable=False, server_default="chat" 
+    )
     data: Mapped[dict] = mapped_column(
         JSONB, nullable=False, default={}, server_default=text("'{}'::jsonb")
     )
@@ -43,5 +46,5 @@ class Space(Base):
         "User", back_populates="spaces"
     )
     documents: Mapped[list[Document]] = relationship(
-        "Document", back_populates="space", cascade="all, delete-orphan"
+        "Document", back_populates="space", passive_deletes=True
     )

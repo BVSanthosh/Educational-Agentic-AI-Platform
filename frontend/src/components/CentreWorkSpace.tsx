@@ -1,30 +1,50 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { UploadCloud, Send, Bot, FileText, ArrowRight, User, BookOpen, ExternalLink } from 'lucide-react';
-import type { Message } from '../types';
-
-interface Resource {
-  tile: string;
-  url: string;
-}
-
-interface References {
-  description: string;
-  references: Resource[] | null;
-}
+import type { Message } from '../types'; 
 
 export default function CentreWorkspace() {
-  const { activeTool, activeSessionId, sessions, updateSessionState, addMessage, token, ensureReferenceSpaceExists } = useAppStore();
+  const { 
+    activeTool, 
+    activeSessionId, 
+    sessions, 
+    updateSessionState, 
+    addMessage, 
+    updateStreamingMessage, 
+    token, 
+    ensureReferenceSpaceExists,
+    loadSpaceData, 
+    activeChat, 
+    activeReferences,
+    setAgentProgress,
+    setActiveDocument
+
+  } = useAppStore();
+
+  console.log("ACTIVE CHAT: ", activeChat)
+
   const [inputValue, setInputValue] = useState('');
   const [isUploading, setIsUploading] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
 
-  const [referenceData, setReferenceData] = useState<References | null>(null);
-
-  // Determine the active session (Reference tool doesn't use sessions array)
+  // Determine the active session for conditional UI rendering (upload vs chat views)
   const activeSession = activeTool !== 'reference' && activeSessionId
     ? sessions[activeTool].find(s => s.id === activeSessionId)
     : null;
+
+  // --- AUTO-FETCH HISTORY HOOK ---
+  useEffect(() => {
+    const fetchContextData = async () => {
+      if (activeTool === 'reference') {
+        const spaceId = await ensureReferenceSpaceExists();
+        if (spaceId) await loadSpaceData(spaceId, 'reference');
+      } else if (activeSessionId) {
+        await loadSpaceData(activeSessionId, activeTool);
+      }
+    };
+    
+    fetchContextData();
+  }, [activeTool, activeSessionId, loadSpaceData, ensureReferenceSpaceExists]);
 
   // --- MOCK ACTION HANDLERS ---
   const handleSimulateUpload = () => {
@@ -50,33 +70,24 @@ export default function CentreWorkspace() {
       // CASE A: Reference Generation Tool
       // -------------------------------------------------------------
       if (activeTool === 'reference') {
-        try {
-          const spaceId = await ensureReferenceSpaceExists();
-          if (!spaceId) throw new Error("Could not initialize the reference space.");
+        const spaceId = await ensureReferenceSpaceExists();
+        if (!spaceId) throw new Error("Could not initialize the reference space.");
 
-          // Hit the new path-based endpoint!
-          const res = await fetch(`http://localhost:8000/api/references/${spaceId}`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json', 
-              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-            },
-            credentials: 'include',
-            // Updated to match backend's ReferenceRequest schema
-            body: JSON.stringify({ user_input: query }) 
-          });
+        const res = await fetch(`http://localhost:8000/api/references/${spaceId}`, {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json', 
+            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+          },
+          credentials: 'include',
+          body: JSON.stringify({ user_input: query }) 
+        });
 
-          if (!res.ok) throw new Error('Failed to generate references');
-          
-          // Wait for the full JSON response, then render the cards perfectly
-          const data: References = await res.json();
-          setReferenceData(data);
-          
-        } catch (err) {
-          console.error('Reference generation error:', err);
-        } finally {
-          setIsProcessing(false);
-        }
+        if (!res.ok) throw new Error('Failed to generate references');
+        
+        // Re-fetch data to update activeReferences centrally in the store
+        await loadSpaceData(spaceId, 'reference');
+        setIsProcessing(false);
       }
       
       // -------------------------------------------------------------
@@ -85,20 +96,20 @@ export default function CentreWorkspace() {
       else if (activeSession) {
         const spaceId = activeSession.id;
 
+        // 1. Add User Message
         const userMessage: Message = {
           id: crypto.randomUUID(),
-          sender: 'user',
+          role: 'user',
           content: query,
         };
-        addMessage(activeTool, spaceId, userMessage);
+        addMessage(userMessage); 
 
         const agentMessageId = crypto.randomUUID();
-        const initialAgentMessage: Message = {
-          id: agentMessageId,
-          sender: 'agent',
-          content: '',
-        };
-        addMessage(activeTool, spaceId, initialAgentMessage);
+        
+        // 2. DONT add the empty agent message yet! 
+        // Instead, instantly trigger the progress banner so the user knows it's thinking.
+        setAgentProgress("Analyzing request...");
+        setIsProcessing(false); // Turn off the input spinner, we are using the progress banner now.
 
         const response = await fetch(`http://localhost:8000/api/${activeTool}/${spaceId}/stream`, {
           method: 'POST',
@@ -116,37 +127,65 @@ export default function CentreWorkspace() {
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = '';
         let accumulatedText = '';
-
-        setIsProcessing(false);
+        
+        // 3. Track whether we have created the bubble yet
+        let agentMessageAdded = false; 
 
         while (true) {
           const { value, done } = await reader.read();
           if (done) break;
 
-          const chunk = decoder.decode(value, { stream: true });
-          accumulatedText += chunk;
+          buffer += decoder.decode(value, { stream: true });
+          const events = buffer.split('\n\n');
+          buffer = events.pop() || ''; 
 
-          useAppStore.setState((state) => ({
-            sessions: {
-              ...state.sessions,
-              [activeTool]: state.sessions[activeTool].map((session) => 
-                session.id === spaceId 
-                  ? {
-                      ...session,
-                      messages: session.messages?.map((msg) =>
-                        msg.id === agentMessageId ? { ...msg, content: accumulatedText } : msg
-                      ),
-                    }
-                  : session
-              ),
-            },
-          }));
+          for (const event of events) {
+            if (event.startsWith('data: ')) {
+              try {
+                const dataStr = event.slice(6);
+                const payload = JSON.parse(dataStr);
+
+                if (payload.type === 'progress') {
+                  setAgentProgress(payload.message);
+                } 
+                else if (payload.type === 'token') {
+                  // 4. The moment the first token arrives, create the bubble and hide the progress!
+                  if (!agentMessageAdded) {
+                    addMessage({
+                      id: agentMessageId,
+                      role: 'agent',
+                      content: '',
+                    });
+                    agentMessageAdded = true;
+                    setAgentProgress(null); 
+                  }
+
+                  accumulatedText += payload.content;
+                  updateStreamingMessage(agentMessageId, accumulatedText);
+                } 
+                else if (payload.type === 'document_ready') {
+                  setActiveDocument(payload.document_id);
+                }
+                else if (payload.type === 'error') {
+                  console.error("Agent Error:", payload.message);
+                  setAgentProgress(`Error: ${payload.message}`);
+                }
+                else if (payload.type === 'done') {
+                  setAgentProgress(null);
+                }
+              } catch {
+                console.warn("Failed to parse SSE JSON:", event);
+              }
+            }
+          }
         }
       }
     } catch (error) {
       console.error("API request error:", error);
       setIsProcessing(false);
+      useAppStore.getState().setAgentProgress(null);
     }
   };
 
@@ -193,7 +232,7 @@ export default function CentreWorkspace() {
     );
   }
 
-  const currentMessages = activeSession?.messages || [];
+  const currentMessages = activeChat?.messages || [];
 
   // --- VIEW 3: Chat Interface (Reference Tool or Active Chat Session) ---
   return (
@@ -215,29 +254,29 @@ export default function CentreWorkspace() {
               </div>
             </div>
 
-            {referenceData && (
+            {activeReferences && (
               <div className="space-y-6">
                 {/* Description Box */}
-                {referenceData.description && (
+                {activeReferences.description && (
                   <div className="bg-white border border-gray-200 p-5 rounded-2xl shadow-sm text-gray-700">
                     <h4 className="font-semibold text-gray-900 mb-1 text-sm uppercase tracking-wider text-blue-600">Overview</h4>
-                    <p className="text-sm leading-relaxed">{referenceData.description}</p>
+                    <p className="text-sm leading-relaxed">{activeReferences.description}</p>
                   </div>
                 )}
 
                 {/* References List */}
-                {referenceData.references && referenceData.references.length > 0 && (
+                {activeReferences.references && activeReferences.references.length > 0 && (
                   <div className="space-y-4">
                     <h4 className="font-semibold text-gray-800 text-lg">
-                      Generated Resources ({referenceData.references.length})
+                      Generated Resources ({activeReferences.references.length})
                     </h4>
-                    {referenceData.references.map((ref, index) => (
+                    {activeReferences.references.map((ref, index) => (
                       <div key={index} className="bg-white border border-gray-200 p-5 rounded-xl shadow-sm flex items-center justify-between gap-4 group hover:border-blue-300 transition-colors">
                         <div className="space-y-1 min-w-0">
                           <span className="text-xs font-bold text-blue-600 bg-blue-50 px-2.5 py-0.5 rounded-full">
                             Ref [{index + 1}]
                           </span>
-                          <h5 className="font-semibold text-gray-900 text-base truncate">{ref.tile}</h5>
+                          <h5 className="font-semibold text-gray-900 text-base truncate">{ref.title}</h5>
                           <a 
                             href={ref.url} 
                             target="_blank" 
@@ -267,31 +306,19 @@ export default function CentreWorkspace() {
           
           /* SUMMARY & RESEARCH CHAT VIEW */
           <div className="space-y-6">
-            <div className="flex gap-4 max-w-3xl">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center shrink-0 mt-1">
-                <Bot size={18} className="text-white" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <span className="font-semibold text-gray-800 text-sm">EduAgent</span>
-                <div className="text-gray-700 bg-white border border-gray-100 shadow-sm p-4 rounded-2xl rounded-tl-none">
-                  I have processed your document for this {activeTool} space. What would you like to know?
-                </div>
-              </div>
-            </div>
-
             {currentMessages.map((msg) => (
-              <div key={msg.id} className={`flex gap-4 max-w-3xl ${msg.sender === 'user' ? 'ml-auto flex-row-reverse' : ''}`}>
+              <div key={msg.id} className={`flex gap-4 max-w-3xl ${msg.role === 'user' ? 'ml-auto flex-row-reverse' : ''}`}>
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 mt-1 ${
-                  msg.sender === 'user' ? 'bg-gray-800 text-white' : 'bg-blue-600 text-white'
+                  msg.role === 'user' ? 'bg-gray-800 text-white' : 'bg-blue-600 text-white'
                 }`}>
-                  {msg.sender === 'user' ? <User size={18} /> : <Bot size={18} />}
+                  {msg.role === 'user' ? <User size={18} /> : <Bot size={18} />}
                 </div>
                 <div className="flex flex-col gap-1">
-                  <span className={`font-semibold text-sm ${msg.sender === 'user' ? 'text-right' : 'text-left'} text-gray-800`}>
-                    {msg.sender === 'user' ? 'You' : 'EduAgent'}
+                  <span className={`font-semibold text-sm ${msg.role === 'user' ? 'text-right' : 'text-left'} text-gray-800`}>
+                    {msg.role === 'user' ? 'You' : 'EduAgent'}
                   </span>
                   <div className={`p-4 rounded-2xl shadow-sm text-gray-700 ${
-                    msg.sender === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-gray-100 rounded-tl-none'
+                    msg.role === 'user' ? 'bg-blue-600 text-white rounded-tr-none' : 'bg-white border border-gray-100 rounded-tl-none'
                   }`}>
                     {msg.content}
                   </div>
@@ -301,7 +328,17 @@ export default function CentreWorkspace() {
           </div>
         )}
 
-        {isProcessing && (
+        {activeChat?.agentProgress && (
+          <div className="flex gap-4 max-w-3xl items-center text-blue-600 bg-blue-50/50 p-4 rounded-2xl border border-blue-100">
+            <Bot size={18} className="animate-pulse shrink-0" />
+            <span className="text-sm font-medium animate-pulse">
+              {activeChat.agentProgress}
+            </span>
+          </div>
+        )}
+
+        {/* Your existing isProcessing block */}
+        {isProcessing && !activeChat?.agentProgress && (
           <div className="flex gap-4 max-w-3xl items-center text-gray-400 text-sm italic">
             <Bot size={18} className="animate-spin text-blue-600" />
             EduAgent is generating response...

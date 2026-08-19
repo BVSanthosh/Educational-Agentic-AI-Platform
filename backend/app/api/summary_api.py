@@ -12,7 +12,7 @@ from app.services.summary_agent.ingestion_pipeline import embed_and_summarise
 from app.services.summary_agent.summary_agent import get_answer_and_persist
 from app.utils import get_current_usr
 from app.core.database import get_db
-from app.models import User,Space
+from app.models import User, Space
 from app.schemas import SummaryRequest, SummaryResponse
   
 router = APIRouter(prefix="/api/summary", tags=["Summary"])
@@ -45,7 +45,8 @@ async def upload_summary(file: UploadFile, space_id: UUID, background_task: Back
                     cast("processing", JSONB),
                     True  
                 ),
-                updated_at=func.now()
+                updated_at=func.now(),
+                upload_status="chat"
             )
         )
         

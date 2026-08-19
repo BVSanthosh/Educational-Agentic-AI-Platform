@@ -50,7 +50,7 @@ class Document(Base):
         "Space", back_populates="documents"
     )
     chunks: Mapped[list[DocumentChunk]] = relationship(
-        "DocumentChunk", back_populates="document"
+        "DocumentChunk", back_populates="document", passive_deletes=True
     )
 
 class DocumentChunk(Base):

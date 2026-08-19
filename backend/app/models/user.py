@@ -35,9 +35,9 @@ class User(Base):
         DateTime(timezone=True), server_default=func.now()
     )
     spaces: Mapped[list[Space]] = relationship(
-        "Space", back_populates="user", cascade="all, delete-orphan"
+        "Space", back_populates="user", passive_deletes=True
     )
     documents: Mapped[list[Document]] = relationship(
-        "Document", back_populates="user", cascade="all, delete-orphan"
+        "Document", back_populates="user", passive_deletes=True
     )
 

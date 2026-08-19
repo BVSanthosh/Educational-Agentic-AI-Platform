@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAppStore } from '../store/useAppStore';
 import { 
@@ -10,9 +10,10 @@ import {
   ChevronDown,
   MessageCircle,
   Settings as SettingsIcon,
-  LogOut
+  LogOut,
+  Trash2
 } from 'lucide-react';
-
+ 
 export default function LeftNavigation() {
   const navigate = useNavigate();
 
@@ -23,7 +24,10 @@ export default function LeftNavigation() {
     setActiveSessionId, 
     sessions, 
     setNewSpaceModalOpen,
-    logout
+    logout,
+    fetchSpaces,
+    token,
+    deleteSpace
   } = useAppStore();
 
   // Local state to manage which accordions are open
@@ -31,6 +35,13 @@ export default function LeftNavigation() {
     summary: true,
     research: true,
   });
+
+  useEffect(() => {
+    // Only attempt to fetch if the user is authenticated
+    if (token) {
+      fetchSpaces();
+    }
+  }, [token, fetchSpaces]);
 
   const toggleExpand = (tool: 'summary' | 'research', e: React.MouseEvent) => {
     e.stopPropagation(); // Prevent triggering the parent button's onClick
@@ -124,18 +135,31 @@ export default function LeftNavigation() {
           {expanded.summary && sessions.summary.length > 0 && (
             <div className="mt-1 flex flex-col gap-1 ml-4 pl-4 border-l border-gray-200">
               {sessions.summary.map((session) => (
-                <button
-                  key={session.id}
-                  onClick={() => handleSessionSelect('summary', session.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors text-left truncate ${
-                    activeSessionId === session.id
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  <MessageCircle size={14} className="shrink-0" />
-                  <span className="truncate">{session.title}</span>
-                </button>
+                <div key={session.id} className="group relative flex items-center rounded-md">
+                  <button
+                    onClick={() => handleSessionSelect('summary', session.id)}
+                    className={`flex-1 flex items-center gap-2 px-3 py-1.5 pr-8 rounded-md text-sm transition-colors text-left truncate ${
+                      activeSessionId === session.id
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <MessageCircle size={14} className="shrink-0" />
+                    <span className="truncate">{session.title}</span>
+                  </button>
+                  
+                  {/* Delete Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteSpace(session.id, 'summary');
+                    }}
+                    className="absolute right-1 p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-all z-10"
+                    title="Delete Space"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               ))}
             </div>
           )}
@@ -167,18 +191,31 @@ export default function LeftNavigation() {
           {expanded.research && sessions.research.length > 0 && (
             <div className="mt-1 flex flex-col gap-1 ml-4 pl-4 border-l border-gray-200">
               {sessions.research.map((session) => (
-                <button
-                  key={session.id}
-                  onClick={() => handleSessionSelect('research', session.id)}
-                  className={`w-full flex items-center gap-2 px-3 py-1.5 rounded-md text-sm transition-colors text-left truncate ${
-                    activeSessionId === session.id
-                      ? 'bg-blue-50 text-blue-700 font-medium'
-                      : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
-                  }`}
-                >
-                  <MessageCircle size={14} className="shrink-0" />
-                  <span className="truncate">{session.title}</span>
-                </button>
+                <div key={session.id} className="group relative flex items-center rounded-md">
+                  <button
+                    onClick={() => handleSessionSelect('research', session.id)}
+                    className={`flex-1 flex items-center gap-2 px-3 py-1.5 pr-8 rounded-md text-sm transition-colors text-left truncate ${
+                      activeSessionId === session.id
+                        ? 'bg-blue-50 text-blue-700 font-medium'
+                        : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+                    }`}
+                  >
+                    <MessageCircle size={14} className="shrink-0" />
+                    <span className="truncate">{session.title}</span>
+                  </button>
+                  
+                  {/* Delete Button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      deleteSpace(session.id, 'research');
+                    }}
+                    className="absolute right-1 p-1 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded opacity-0 group-hover:opacity-100 transition-all z-10"
+                    title="Delete Space"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                </div>
               ))}
             </div>
           )}

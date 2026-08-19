@@ -1,9 +1,10 @@
 // Define the core tools available in the application
 export type ToolType = 'reference' | 'summary' | 'research';
+export type UploadStatus = 'chat' | 'upload';
 
 export interface Message {
   id: string;
-  sender: 'user' | 'agent';
+  role: 'user' | 'agent';
   content: string;
   createdAt?: number; 
 }
@@ -14,13 +15,32 @@ export interface Session {
   title: string;
   createdAt: number;
   // Summary tool starts in an 'upload' state before moving to 'chat'
-  state?: 'upload' | 'chat';
-  messages?: Message[]; 
+  state: UploadStatus;
+}
+
+// Chat Interface
+export interface Chat {
+  messages: Message[];
+  summary?: string;
+  status?: string;
+  agentProgress?: string | null; 
+  activeDocumentId?: string | null;
+}
+
+// Reference Interfaces
+export interface Resource {
+  title: string; 
+  url: string;
+}
+
+export interface References {
+  description: string;
+  references: Resource[] | null;
 }
 
 // The shape of our global application state
 export interface AppState {
-  activeTool: ToolType;
+  activeTool: 'reference' | 'summary' | 'research';
   activeSessionId: string | null;
   
   // Track dynamic sessions for the tools that support them
@@ -30,11 +50,13 @@ export interface AppState {
   };
   
   // UI State
+  activeChat: Chat | null;
+  activeReferences: References | null;
+  
   isLeftPanelOpen: boolean;
   isRightPanelOpen: boolean;
   isNewSpaceModalOpen: boolean;
 
   // Global Reference Tool State
   referenceSpaceId: string | null;
-  ensureReferenceSpaceExists: () => Promise<string | null>;
 }
