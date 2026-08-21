@@ -1,42 +1,44 @@
 import os
+import json
+import asyncio
 from pathlib import Path 
+from typing import AsyncGenerator
 from llama_index.readers.file import PDFReader
 from llama_index.core.ingestion import IngestionPipeline
-from llama_index.core.llms import ChatMessage
 from uuid import UUID, uuid4
 from app.core.database import AsyncSessionLocal
-from sqlalchemy import update, func, String, cast
-from sqlalchemy.dialects.postgresql import JSONB, ARRAY
-from app.models import Document as DocumentModel, DocumentChunk, Space
-from app.services.summary_agent.models import (
+from app.models import Document, DocumentChunk
+from app.utils.s3_client import upload_document_to_s3
+from app.services.summary_agent.summary_agent import (
     llm,
-    embed_model,
+    llama_index_embed_model,
     splitter
 )
 
-async def embed_and_summarise(filename: str, filepath: str, space_id: UUID, user_id: UUID):
+async def stream_embed_and_summarise(
+    filename: str, 
+    filepath: str, 
+    space_id: UUID, 
+    user_id: UUID
+) -> AsyncGenerator[str, None]:
     try:
+        yield f"data: {json.dumps({'type': 'progress', 'message': 'Parsing document and creating vector embeddings...'})}\n\n"
+        
         file_size = os.path.getsize(filepath)
         doc_id = uuid4()
         
         parser = PDFReader()
         documents = parser.load_data(file=Path(filepath))
         
-        # 1. Run pipeline WITHOUT a vector store to just get the embedded nodes
+        # Use the dedicated LlamaIndex embed model for the IngestionPipeline
         pipeline = IngestionPipeline(
-            transformations=[
-                splitter,
-                embed_model,
-            ],
+            transformations=[splitter, llama_index_embed_model], 
         )
-        
-        # nodes will contain the chunked text and the vector embeddings
         nodes = await pipeline.arun(documents=documents)
 
-        # 2. Insert into your custom database tables
+        # Save source file and chunks into database
         async with AsyncSessionLocal() as db:
-            # Add the parent Document first to satisfy the Foreign Key constraint
-            doc_record = DocumentModel(
+            doc_record = Document(
                 id=doc_id,
                 user_id=user_id,
                 space_id=space_id,
@@ -47,81 +49,70 @@ async def embed_and_summarise(filename: str, filepath: str, space_id: UUID, user
                 metadata_={"source": filename}
             )
             db.add(doc_record)
-            await db.flush() # Ensure doc_record exists before adding chunks
+            await db.flush()
             
-            # Map LlamaIndex nodes to your DocumentChunk model
-            chunk_records = []
-            for i, node in enumerate(nodes):
-                chunk_records.append(
-                    DocumentChunk(
-                        document_id=doc_id,
-                        node_id=node.node_id,
-                        chunk_index=i,
-                        text=node.get_content(),
-                        embedding=node.embedding, # Insert pgvector embedding
-                        metadata_=node.metadata
-                    )
+            chunk_records = [
+                DocumentChunk(
+                    document_id=doc_id,
+                    node_id=node.node_id,
+                    chunk_index=i,
+                    text=node.get_content(),
+                    embedding=node.embedding,
+                    metadata_=node.metadata
                 )
-            
+                for i, node in enumerate(nodes)
+            ]
             db.add_all(chunk_records)
             await db.commit()
 
-        # 3. Generate the summary (Remains unchanged)
+        yield f"data: {json.dumps({'type': 'progress', 'message': 'Generating comprehensive markdown summary...'})}\n\n"
+
         full_doc_text = "\n\n".join([doc.text for doc in documents])
+        
+        # Use standard LangChain message tuples and .ainvoke() instead of LlamaIndex .achat()
         messages = [
-            ChatMessage(
-                role="system", 
-                content="Your role is to summarize any documents the user sends you. Provide a detailed and comprehensive overview."
-            ),
-            ChatMessage(
-                role="user", 
-                content=f"Please summarize the document '{filename}':\n\n{full_doc_text}"
-            ),
+            ("system", "Your role is to summarize documents sent by the user. Provide a detailed, highly structured, and comprehensive markdown-formatted overview."),
+            ("human", f"Please summarize the document '{filename}':\n\n{full_doc_text}")
         ]
         
-        summary_response = await llm.achat(messages)
-        summary_text = str(summary_response.message.content)
+        summary_response = await llm.ainvoke(messages)
+        summary_text = str(summary_response.content)
+
+        # Save Summary as a viewable Document in S3/Database
+        summary_filename = f"Summary_{os.path.splitext(filename)[0]}.md"
+        s3_data = await upload_document_to_s3(summary_text, folder="summary_reports")
+
+        async with AsyncSessionLocal() as db_session:
+            new_doc = Document(
+                space_id=space_id,
+                user_id=user_id,
+                filename=summary_filename,
+                file_path=s3_data["s3_key"],
+                file_size_bytes=s3_data["file_size_bytes"],
+                mime_type=s3_data["mime_type"],
+                metadata_={"s3_url": s3_data["url"]}
+            )
+            db_session.add(new_doc)
+            await db_session.commit()
+            await db_session.refresh(new_doc)
+            summary_doc_id = new_doc.id
+
+        yield f"data: {json.dumps({'type': 'document_ready', 'document_id': str(summary_doc_id), 'filename': summary_filename})}\n\n"
+
+        # Stream the fixed handoff message
+        handoff_text = f"I have successfully analyzed '{filename}', generated your summary, and opened it in the right panel. Feel free to ask me any questions about the document!"
         
-        # 4. Update Space data (Remains unchanged)
-        async with AsyncSessionLocal() as db:
-            query = (
-                update(Space)
-                .where(Space.id == space_id, Space.user_id == user_id)
-                .values(
-                    data=func.jsonb_set(
-                        func.jsonb_set(
-                            Space.data,
-                            cast(["summary"], ARRAY(String)),
-                            cast(summary_text, JSONB),
-                            True
-                        ),
-                        cast(["status"], ARRAY(String)),
-                        cast("ready", JSONB),
-                        True
-                    ),
-                    updated_at=func.now()
-                )
-            )
-            await db.execute(query)
-            await db.commit()
-            
+        chunk_size = 6
+        for i in range(0, len(handoff_text), chunk_size):
+            chunk = handoff_text[i:i + chunk_size]
+            yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+            await asyncio.sleep(0.02)
+
+        yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
     except Exception as e:
-        async with AsyncSessionLocal() as db:
-            query = (
-                update(Space)
-                .where(Space.id == space_id, Space.user_id == user_id)
-                .values(
-                    data=func.jsonb_set(
-                        Space.data,
-                        cast(["status"], ARRAY(String)),
-                        cast(f"failed: {str(e)}", JSONB),
-                        True
-                    ),
-                    updated_at=func.now()
-                )
-            )
-            await db.execute(query)
-            await db.commit()
+        print(f"ERROR IN STREAM_EMBED_AND_SUMMARISE: {str(e)}")
+        yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
     finally:
         if os.path.exists(filepath):
             os.remove(filepath)

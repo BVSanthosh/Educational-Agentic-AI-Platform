@@ -42,7 +42,7 @@ async def get_streamed_references(space_id: UUID, body: ReferenceRequest, curren
     )
 
 @router.post("/{space_id}", response_model=ReferenceResponse)
-async def get_references(space_id: UUID, body: ReferenceRequest, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> ReferenceOutput | None: 
+async def get_references(space_id: UUID, body: ReferenceRequest, current_user: Annotated[User, Depends(get_current_usr)], session: Annotated[AsyncSession, Depends(get_db)]) -> ReferenceResponse | None: 
     query = select(Space.thread_id).where(Space.id == space_id)
     thread_id = (await session.scalars(query)).one_or_none()
 

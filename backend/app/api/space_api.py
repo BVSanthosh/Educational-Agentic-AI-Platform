@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+from sqlalchemy.orm import selectinload
 from typing import Dict, Any, Optional
 from uuid import UUID
 from app.schemas import SpaceResponse, SpaceBase, CreateSpace, SpacesRequest
@@ -17,7 +18,11 @@ router = APIRouter(prefix="/api/space", tags=["Spaces"])
 
 @router.get("/{space_id}", response_model=SpaceResponse)
 async def get_space(space_id: UUID, session: Annotated[AsyncSession, Depends(get_db)], current_user: Annotated[User, Depends(get_current_usr)]):
-    query = select(Space).where(Space.id == space_id, Space.user_id == current_user.id)
+    query = (
+        select(Space)
+        .options(selectinload(Space.documents))
+        .where(Space.id == space_id, Space.user_id == current_user.id)
+    )
     space = (await session.scalars(query)).one_or_none()
 
     if not space:
@@ -46,7 +51,7 @@ async def create_space(paylaod: CreateSpace, session: Annotated[AsyncSession, De
     new_space = Space(
         **paylaod.model_dump(),
         user_id=current_user.id
-    )
+    ) 
     
     new_data = {}
     if paylaod.tool == RESEEARCH:

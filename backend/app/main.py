@@ -17,7 +17,8 @@ from app.api import (
 )
 from app.services import (
     init_reference_agent,
-    init_research_agent
+    init_research_agent, 
+    init_summary_agent
 )
 
 @asynccontextmanager
@@ -41,7 +42,7 @@ async def lifespan(app: FastAPI):
         kwargs={"autocommit": True}
     )
     await pool.open()
-    
+     
     # 2. Run migrations/setup for the checkpointer tables
     async with pool.connection() as conn:
         checkpointer = AsyncPostgresSaver(conn)
@@ -53,6 +54,7 @@ async def lifespan(app: FastAPI):
     # Initialize your agents using the pool
     init_reference_agent(pool)
     init_research_agent(pool)
+    init_summary_agent(pool)
 
     yield 
 

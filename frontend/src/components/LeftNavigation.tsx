@@ -121,7 +121,7 @@ export default function LeftNavigation() {
           >
             <div className="flex items-center gap-3">
               <MessageSquare size={18} className={activeTool === 'summary' ? 'text-blue-600' : 'text-gray-500'} />
-              <span>Summarise & QnA</span>
+              <span>Document Summary</span>
             </div>
             <div 
               onClick={(e) => toggleExpand('summary', e)}

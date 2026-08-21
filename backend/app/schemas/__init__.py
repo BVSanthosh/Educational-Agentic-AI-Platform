@@ -4,4 +4,4 @@ from .summary_schema import SummaryRequest, SummaryResponse
 from .space_schema import SpaceResponse, SpaceBase, CreateSpace, SpacesRequest
 from .user_schema import UserBase
 from .auth_schema import Tokens, LoginCredentials, SignUpCredentials, AuthResponse, GoogleAuthRequest
-from .document_schema import DocumentResponse
+from .document_schema import DocumentFull, DocumentMeta, SpaceResponse

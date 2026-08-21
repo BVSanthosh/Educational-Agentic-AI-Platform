@@ -84,25 +84,25 @@ async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id
             elif event_type == "on_tool_end" and name == "write_research_report":
                 is_writing_report = False
                 try:
-                    # 1. Grab the output object (which is a ToolMessage)
                     output_obj = event_data.get("output")
                     output_str = "{}"
                     
+                    # Bulletproof extraction for LangChain v0.2 ToolMessages
                     if output_obj is not None:
-                        # 1. If output_obj itself is already a string
-                        if isinstance(output_obj, str):
+                        if hasattr(output_obj, "content"): # It's a ToolMessage
+                            output_str = str(output_obj.content)
+                        elif isinstance(output_obj, dict) and "content" in output_obj:
+                            output_str = str(output_obj["content"])
+                        elif isinstance(output_obj, str):
                             output_str = output_obj
-                        # 2. If it's a dictionary
-                        elif isinstance(output_obj, dict):
-                            output_str = str(output_obj.get("content", "{}"))
 
-                    # Parse the string into JSON
                     tool_output = json.loads(output_str)
                     
                     if tool_output.get("status") == "success":
                         doc_payload = {
                             "type": "document_ready", 
                             "document_id": tool_output.get("document_id"),
+                            "filename": tool_output.get("filename", "Generated_Report.md") # ✅ Pass filename
                         }
                         yield f"data: {json.dumps(doc_payload)}\n\n"
                     else:
@@ -110,7 +110,6 @@ async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id
                         yield f"data: {json.dumps({'type': 'error', 'message': f'Tool Failed: {err_msg}'})}\n\n"
                 except Exception as e:
                     print(f"Failed to parse tool output: {e}")
-                    pass
             
             # 3. Emitting LLM Chat Tokens
             elif event_type == "on_chat_model_stream" and not is_writing_report:

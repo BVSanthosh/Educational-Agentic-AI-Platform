@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import { X } from 'lucide-react';
-
+ 
 export default function NewSpaceModal() {
   const { isNewSpaceModalOpen, setNewSpaceModalOpen, createNewSpace } = useAppStore();
   

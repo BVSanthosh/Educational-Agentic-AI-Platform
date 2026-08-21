@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import type { AppState, ToolType, Session, Message, UploadStatus } from '../types';
+import type { AppState, ToolType, Session, Message, UploadStatus, DocumentMeta } from '../types';
 
 interface AppStore extends AppState { 
   token: string | null;
@@ -24,10 +24,13 @@ interface AppStore extends AppState {
 
   setAgentProgress: (progress: string | null) => void;
   setActiveDocument: (documentId: string | null) => void;
+  addDocumentToActiveChat: (document: DocumentMeta) => void;
 }
  
 export const useAppStore = create<AppStore>((set, get) => ({
   token: localStorage.getItem('token'),
+
+  activeDocumentId: null,
 
   activeTool: 'reference',
   referenceSpaceId: null,
@@ -63,13 +66,28 @@ export const useAppStore = create<AppStore>((set, get) => ({
       activeTool: 'reference', 
       activeChat: null,      
       activeReferences: null,
+      activeDocumentId: null, // ✅ Reset on logout
+      isRightPanelOpen: false,
       sessions: { summary: [], research: [] } 
     });
   },
   // --------------------
   
-  setActiveTool: (tool) => set({ activeTool: tool, activeChat: null, activeReferences: null }), 
-  setActiveSessionId: (id) => set({ activeSessionId: id, activeChat: null, activeReferences: null }),
+  setActiveTool: (tool) => set({ 
+    activeTool: tool, 
+    activeChat: null, 
+    activeReferences: null,
+    activeDocumentId: null, 
+    isRightPanelOpen: false
+  }), 
+
+  setActiveSessionId: (id) => set({ 
+    activeSessionId: id, 
+    activeChat: null, 
+    activeReferences: null,
+    activeDocumentId: null, 
+    isRightPanelOpen: false
+  }),
 
   setLeftPanelOpen: (isOpen) => set({ isLeftPanelOpen: isOpen }),
   setRightPanelOpen: (isOpen) => set({ isRightPanelOpen: isOpen }),
@@ -88,20 +106,25 @@ export const useAppStore = create<AppStore>((set, get) => ({
       if (!response.ok) throw new Error("Failed to fetch space data");
       
       const spaceResponse = await response.json();
-      const data = spaceResponse.data || {};
 
       if (tool === 'reference') {
         set({ 
           activeReferences: {
-            description: data.description || "",
-            references: data.references || []
+            description: spaceResponse.data?.description || "",
+            references: spaceResponse.data?.references || []
           } 
         });
       } else {
+        const documents = spaceResponse.documents || [];
+        
         set({ 
           activeChat: {
-            messages: data.messages || []
-          } 
+            messages: spaceResponse.data?.messages || [],
+            documents: documents 
+          },
+          // Open the panel if there are documents, but don't set an active ID yet!
+          isRightPanelOpen: documents.length > 0,
+          activeDocumentId: null 
         });
       }
     } catch (error) {
@@ -113,10 +136,27 @@ export const useAppStore = create<AppStore>((set, get) => ({
     activeChat: state.activeChat ? { ...state.activeChat, agentProgress: progress } : null
   })),
 
+  // Perfectly structured for your button clicks!
   setActiveDocument: (documentId) => set((state) => ({
-    activeChat: state.activeChat ? { ...state.activeChat, activeDocumentId: documentId } : null,
-    isRightPanelOpen: !!documentId // Auto-open the right panel when a doc is ready!
+    activeDocumentId: documentId,
+    // Safely open the panel if an ID is passed. If null (Back button), keep it open.
+    isRightPanelOpen: documentId ? true : state.isRightPanelOpen 
   })),
+
+  addDocumentToActiveChat: (document) => set((state) => {
+    if (!state.activeChat) return state;
+
+    // Prevent duplicates just in case the backend emits twice
+    const exists = state.activeChat.documents?.some(d => d.id === document.id);
+    if (exists) return state;
+
+    return {
+      activeChat: {
+        ...state.activeChat,
+        documents: [...(state.activeChat.documents || []), document]
+      }
+    };
+  }),
 
   createNewSpace: async (tool, spaceName, uploadStatus) => {
     try {
@@ -138,7 +178,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
         activeTool: tool, 
         activeSessionId: newSpace.id,
         activeChat: null, 
-        activeReferences: null ,
+        activeReferences: null,
+        activeDocumentId: null, 
+        isRightPanelOpen: false,
         isNewSpaceModalOpen: false
       });
       
@@ -220,10 +262,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }
       });
 
+      const sortByNewest = (a: Session, b: Session) => b.createdAt - a.createdAt;
+
       set({
         sessions: {
-          summary: summarySessions,
-          research: researchSessions,
+          summary: summarySessions.sort(sortByNewest),
+          research: researchSessions.sort(sortByNewest),
         }
       });
 
@@ -262,7 +306,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const state = get();
     if (!state.token) return;
 
-    // Optional: Add a simple browser confirmation so users don't accidentally click it
     if (!window.confirm("Are you sure you want to delete this space? This action cannot be undone.")) {
       return;
     }
@@ -275,12 +318,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
 
       if (!response.ok) throw new Error("Failed to delete space");
 
-      // Update the state to remove the space
       set((state) => {
         const updatedSessions = state.sessions[tool].filter(s => s.id !== spaceId);
-        
-        // If the user deleted the space they are currently looking at, 
-        // clear the active session so they don't look at a ghost space!
         const isDeletingActiveSession = state.activeSessionId === spaceId;
 
         return {
@@ -290,7 +329,9 @@ export const useAppStore = create<AppStore>((set, get) => ({
           },
           ...(isDeletingActiveSession ? { 
             activeSessionId: null, 
-            activeChat: null 
+            activeChat: null,
+            activeDocumentId: null, // ✅ Close panel if active space is deleted
+            isRightPanelOpen: false
           } : {})
         };
       });

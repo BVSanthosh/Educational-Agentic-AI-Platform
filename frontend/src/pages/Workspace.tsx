@@ -1,4 +1,4 @@
-import { Menu, PanelRight } from 'lucide-react'; // Make sure to import these
+import { Menu, PanelRight } from 'lucide-react'; 
 import { useAppStore } from '../store/useAppStore';
 import NewSpaceModal from '../components/NewSpaceModal';
 import LeftNavigation from '../components/LeftNavigation';
@@ -8,11 +8,30 @@ import RightContextPanel from '../components/RightContextPanel';
 export default function Workspace() {
   const { 
     activeTool, 
+    activeSessionId,
+    sessions,
     isLeftPanelOpen, 
     setLeftPanelOpen, 
     isRightPanelOpen, 
     setRightPanelOpen 
   } = useAppStore();
+
+  // Find the currently active session
+  const activeSession = activeTool !== 'reference' && activeSessionId
+    ? sessions[activeTool]?.find(s => s.id === activeSessionId)
+    : null;
+
+  // Derive the dynamic title for the header
+  const getHeaderTitle = () => {
+    if (activeTool === 'reference') {
+      return 'Reference Generator';
+    }
+    if (activeSession) {
+      return activeSession.title;
+    }
+    // Fallback if no space is active
+    return activeTool === 'summary' ? 'Document Summarizer' : 'Deep Research';
+  };
 
   return (
     <div className="flex h-screen w-full overflow-hidden bg-gray-50 text-gray-900">
@@ -42,7 +61,18 @@ export default function Workspace() {
             >
               <Menu size={20} />
             </button>
-            <h2 className="font-semibold text-lg capitalize">{activeTool} Space</h2>
+            
+            {/* Dynamic Title & Tool Badge */}
+            <div className="flex items-center gap-2.5">
+              <h2 className="font-semibold text-lg text-gray-900 truncate">
+                {getHeaderTitle()}
+              </h2>
+              {activeTool !== 'reference' && activeSession && (
+                <span className="text-[11px] font-semibold text-blue-600 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full capitalize tracking-wide">
+                  {activeTool}
+                </span>
+              )}
+            </div>
           </div>
 
           <div className="flex items-center">
@@ -62,6 +92,7 @@ export default function Workspace() {
             )}
           </div>
         </header>
+        
         {/* Chat Interface */}
         <CentreWorkspace />
       </main>

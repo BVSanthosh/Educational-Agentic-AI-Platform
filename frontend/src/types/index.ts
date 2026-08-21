@@ -9,6 +9,11 @@ export interface Message {
   createdAt?: number; 
 }
 
+export interface DocumentMeta {
+  id: string;
+  filename: string;
+}
+
 // Represents an individual chat/workspace instance
 export interface Session {
   id: string;
@@ -24,7 +29,7 @@ export interface Chat {
   summary?: string;
   status?: string;
   agentProgress?: string | null; 
-  activeDocumentId?: string | null;
+  documents?: DocumentMeta[];
 }
 
 // Reference Interfaces
@@ -42,6 +47,7 @@ export interface References {
 export interface AppState {
   activeTool: 'reference' | 'summary' | 'research';
   activeSessionId: string | null;
+  activeDocumentId: string | null;
   
   // Track dynamic sessions for the tools that support them
   sessions: {

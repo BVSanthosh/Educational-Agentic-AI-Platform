@@ -45,7 +45,7 @@ async def write_research_report(subject_matter: str, config: RunnableConfig) -> 
             new_doc = Document(
                 space_id=UUID(space_id_str),
                 user_id=UUID(user_id_str),
-                filename=f"{safe_filename}.md",
+                filename=safe_filename,
                 file_path=s3_data["s3_key"],                  
                 file_size_bytes=s3_data["file_size_bytes"],   
                 mime_type=s3_data["mime_type"],               
@@ -59,6 +59,7 @@ async def write_research_report(subject_matter: str, config: RunnableConfig) -> 
         return json.dumps({
             "status": "success",
             "document_id": str(new_doc.id),
+            "filename": safe_filename,
             "message": "Report generated and saved successfully."
         })
     except Exception as e:
