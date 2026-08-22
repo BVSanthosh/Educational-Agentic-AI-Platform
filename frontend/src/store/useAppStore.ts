@@ -2,7 +2,7 @@ import { create } from 'zustand';
 import type { AppState, ToolType, Session, Message, UploadStatus, DocumentMeta } from '../types';
 
 interface AppStore extends AppState { 
-  token: string | null;
+  toggleTheme: () => void;
   setToken: (token: string | null) => void; 
   logout: () => void;
 
@@ -29,6 +29,7 @@ interface AppStore extends AppState {
  
 export const useAppStore = create<AppStore>((set, get) => ({
   token: localStorage.getItem('token'),
+  theme: (localStorage.getItem('theme') as 'light' | 'dark') || 'light',
 
   activeDocumentId: null,
 
@@ -47,6 +48,12 @@ export const useAppStore = create<AppStore>((set, get) => ({
   isLeftPanelOpen: true,
   isRightPanelOpen: false,
   isNewSpaceModalOpen: false,
+
+  toggleTheme: () => set((state) => {
+    const newTheme = state.theme === 'light' ? 'dark' : 'light';
+    localStorage.setItem('theme', newTheme);
+    return { theme: newTheme };
+  }),
 
   // --- Auth Actions ---
   setToken: (token) => {
@@ -73,20 +80,30 @@ export const useAppStore = create<AppStore>((set, get) => ({
   },
   // --------------------
   
-  setActiveTool: (tool) => set({ 
-    activeTool: tool, 
-    activeChat: null, 
-    activeReferences: null,
-    activeDocumentId: null, 
-    isRightPanelOpen: false
+  setActiveTool: (tool) => set((state) => {
+    // If the tool hasn't changed, do nothing! (Stops screen wipe)
+    if (state.activeTool === tool) return state;
+    
+    return { 
+      activeTool: tool, 
+      activeChat: null, 
+      activeReferences: null,
+      activeDocumentId: null, 
+      isRightPanelOpen: false
+    };
   }), 
 
-  setActiveSessionId: (id) => set({ 
-    activeSessionId: id, 
-    activeChat: null, 
-    activeReferences: null,
-    activeDocumentId: null, 
-    isRightPanelOpen: false
+  setActiveSessionId: (id) => set((state) => {
+    // If the space hasn't changed, do nothing! (Stops screen wipe)
+    if (state.activeSessionId === id) return state;
+    
+    return { 
+      activeSessionId: id, 
+      activeChat: null, 
+      activeReferences: null,
+      activeDocumentId: null, 
+      isRightPanelOpen: false
+    };
   }),
 
   setLeftPanelOpen: (isOpen) => set({ isLeftPanelOpen: isOpen }),
@@ -122,8 +139,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
             messages: spaceResponse.data?.messages || [],
             documents: documents 
           },
-          // Open the panel if there are documents, but don't set an active ID yet!
-          isRightPanelOpen: documents.length > 0,
           activeDocumentId: null 
         });
       }
@@ -238,6 +253,13 @@ export const useAppStore = create<AppStore>((set, get) => ({
         headers: { 'Authorization': `Bearer ${state.token}` }
       });
 
+      // 👇 THE FIX: If the token is dead, clear it and abort!
+      if (response.status === 401 || response.status === 403) {
+        console.warn("Token expired or invalid. Logging out...");
+        state.logout(); 
+        return;
+      }
+
       if (!response.ok) throw new Error("Failed to fetch spaces");
       
       const spaces = await response.json();
@@ -262,6 +284,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }
       });
 
+      // Sort both arrays so newest comes first
       const sortByNewest = (a: Session, b: Session) => b.createdAt - a.createdAt;
 
       set({

@@ -45,6 +45,8 @@ export interface References {
 
 // The shape of our global application state
 export interface AppState {
+  token: string | null;
+  theme: 'light' | 'dark';
   activeTool: 'reference' | 'summary' | 'research';
   activeSessionId: string | null;
   activeDocumentId: string | null;

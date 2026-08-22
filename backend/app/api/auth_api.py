@@ -1,5 +1,5 @@
 import httpx
-import uuid
+import uuid 
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
 from typing import Annotated
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -9,6 +9,7 @@ from app.core import get_db, env
 from app.models import User
 from app.schemas import LoginCredentials, SignUpCredentials, AuthResponse, GoogleAuthRequest
 from app.utils import create_tokens, validate_token
+from app.utils.deps import get_current_usr
 
 router = APIRouter(prefix="/api/auth", tags=["Auth"])
 
@@ -127,6 +128,26 @@ async def logout(res: Response):
     res.delete_cookie(key="refresh_token", path="/auth/refresh")
     return {"detail": "Successfully logged out"}
 
+@router.delete("/delete-account", status_code=status.HTTP_204_NO_CONTENT)
+async def delete_account(
+    current_user: User = Depends(get_current_usr),
+    db: AsyncSession = Depends(get_db)
+):
+    """
+    Permanently deletes the currently authenticated user.
+    """
+    try:
+        await db.delete(current_user)
+        await db.commit()
+        
+        return None
+    except Exception as e:
+        await db.rollback()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to delete account: {str(e)}"
+        )
+
 @router.post("/google", response_model=AuthResponse)
 async def google_auth(paylaod: GoogleAuthRequest, res: Response, session: Annotated[AsyncSession, Depends(get_db)]):
     token_url = "https://oauth2.googleapis.com/token"
@@ -134,7 +155,7 @@ async def google_auth(paylaod: GoogleAuthRequest, res: Response, session: Annota
         "code": paylaod.code,
         "client_id": env.GOOGLE_CLIENT_ID,
         "client_secret": env.GOOGLE_CLIENT_SECRET,
-        "redirect_url": env.GOOGLE_REDIRECT_URI,
+        "redirect_uri": env.GOOGLE_REDIRECT_URI,
         "grant_type": "authorization_code"
     }
 

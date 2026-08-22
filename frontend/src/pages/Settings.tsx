@@ -1,33 +1,62 @@
 import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { User, Bell, Shield, ArrowLeft, Save } from 'lucide-react';
+import { ArrowLeft, Trash2, AlertTriangle } from 'lucide-react';
+import { useAppStore } from '../store/useAppStore';
 
 export default function Settings() {
   const navigate = useNavigate();
-  const [activeTab, setActiveTab] = useState<'profile' | 'notifications' | 'security'>('profile');
-  
-  const [username, setUsername] = useState('johndoe123');
-  const [email, setEmail] = useState('you@university.edu');
-  const [isSaving, setIsSaving] = useState(false);
+  const { token, logout } = useAppStore();
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleSave = (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSaving(true);
+  const handleDeleteAccount = async () => {
+    // 1. Prompt the user to confirm this destructive action
+    const confirmed = window.confirm(
+      "Are you absolutely sure you want to delete your account? This action cannot be undone and will permanently delete all your spaces, documents, and chat history."
+    );
     
-    // Mock API call to update user settings
-    setTimeout(() => {
-      setIsSaving(false);
-      console.log('Settings saved:', { username, email });
-    }, 1000);
+    if (!confirmed) return;
+    
+    setIsDeleting(true);
+    setError(null);
+    
+    try {
+      // 2. Call the backend API to delete the user
+      const response = await fetch('http://localhost:8000/api/auth/delete-account', {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (!response.ok) {
+        throw new Error('Failed to delete account');
+      }
+      
+      // 3. Clear Zustand state, clear localStorage, and kick to login
+      logout();
+      navigate('/login');
+    } catch (err) {
+      console.error("Error deleting account:", err);
+      
+      // Safely check if 'err' is an Error object instead of using 'any'
+      if (err instanceof Error) {
+        setError(err.message);
+      } else {
+        setError('An error occurred while deleting your account.');
+      }
+      
+      setIsDeleting(false);
+    }
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 text-gray-900 flex flex-col">
+    <div className="min-h-screen bg-gray-50 dark:bg-gray-950 text-gray-900 dark:text-gray-100 flex flex-col transition-colors duration-200">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-4 flex items-center gap-4">
+      <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800 px-6 py-4 flex items-center gap-4 transition-colors duration-200">
         <button 
           onClick={() => navigate('/workspace')}
-          className="p-2 text-gray-500 hover:text-gray-900 hover:bg-gray-100 rounded-lg transition-colors"
+          className="p-2 text-gray-500 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
         >
           <ArrowLeft size={20} />
         </button>
@@ -35,82 +64,36 @@ export default function Settings() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 max-w-5xl w-full mx-auto py-8 px-6 flex flex-col md:flex-row gap-8">
-        
-        {/* Settings Sidebar */}
-        <aside className="w-full md:w-64 shrink-0 space-y-1">
-          <button 
-            onClick={() => setActiveTab('profile')}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium transition-colors ${
-              activeTab === 'profile' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <User size={18} /> Profile
-          </button>
-          <button 
-            onClick={() => setActiveTab('notifications')}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium transition-colors ${
-              activeTab === 'notifications' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Bell size={18} /> Notifications
-          </button>
-          <button 
-            onClick={() => setActiveTab('security')}
-            className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl font-medium transition-colors ${
-              activeTab === 'security' ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'
-            }`}
-          >
-            <Shield size={18} /> Security
-          </button>
-        </aside>
-
-        {/* Settings Form Area */}
-        <div className="flex-1 bg-white border border-gray-200 rounded-2xl shadow-sm p-6 md:p-8">
-          {activeTab === 'profile' && (
-            <div>
-              <h2 className="text-lg font-semibold mb-6">Profile Information</h2>
-              <form onSubmit={handleSave} className="space-y-5 max-w-md">
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Username</label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-                  />
-                </div>
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
-                  <input
-                    type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-colors"
-                  />
-                </div>
-                
-                <div className="pt-4 border-t border-gray-100">
-                  <button
-                    type="submit"
-                    disabled={isSaving}
-                    className="flex items-center gap-2 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2.5 rounded-lg font-medium transition-colors disabled:opacity-50"
-                  >
-                    <Save size={18} />
-                    {isSaving ? 'Saving...' : 'Save Changes'}
-                  </button>
-                </div>
-              </form>
+      <main className="flex-1 max-w-3xl w-full mx-auto py-12 px-6">
+        <div className="bg-white dark:bg-gray-900 border border-red-200 dark:border-red-900/50 rounded-2xl shadow-sm p-6 md:p-8 transition-colors duration-200">
+          <div className="flex items-start gap-4">
+            <div className="p-3 bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400 rounded-full shrink-0 transition-colors">
+              <AlertTriangle size={24} />
             </div>
-          )}
+            <div>
+              <h2 className="text-xl font-bold text-gray-900 dark:text-gray-100 mb-2 transition-colors">Delete Account</h2>
+              <p className="text-gray-600 dark:text-gray-400 mb-6 leading-relaxed transition-colors">
+                Permanently delete your account and all of its associated data from the EduAgent platform. 
+                This includes all of your workspaces, uploaded documents, and chat histories. 
+                <strong className="text-gray-900 dark:text-gray-200 transition-colors"> This action is not reversible.</strong>
+              </p>
+              
+              {error && (
+                <div className="mb-6 p-3 bg-red-50 dark:bg-red-950/50 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-lg text-sm transition-colors">
+                  {error}
+                </div>
+              )}
 
-          {activeTab === 'notifications' && (
-            <div className="text-gray-500 italic">Notification preferences coming soon...</div>
-          )}
-
-          {activeTab === 'security' && (
-            <div className="text-gray-500 italic">Security & password management coming soon...</div>
-          )}
+              <button
+                onClick={handleDeleteAccount}
+                disabled={isDeleting}
+                className="flex items-center gap-2 bg-red-600 dark:bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white px-5 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Trash2 size={18} />
+                {isDeleting ? 'Deleting Account...' : 'Delete My Account'}
+              </button>
+            </div>
+          </div>
         </div>
       </main>
     </div>

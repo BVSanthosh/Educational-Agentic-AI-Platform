@@ -109,16 +109,15 @@ export default function RightPanel() {
 
   const listTitle = activeTool === 'summary' ? 'Generated Summary' : 'Generated Report';
   const documents = activeChat?.documents || [];
-  console.log(documents)
 
   return (
     <div 
-      className="flex h-full bg-white border-l border-gray-200 shadow-xl relative"
+      className="flex h-full bg-white dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800 shadow-xl relative transition-colors duration-200"
       style={{ width: panelWidth }}
     >
       {/* Drag Handle */}
       <div 
-        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-400 hover:bg-opacity-50 transition-colors z-10"
+        className="absolute left-0 top-0 bottom-0 w-2 cursor-col-resize hover:bg-blue-400 dark:hover:bg-blue-500 hover:bg-opacity-50 dark:hover:bg-opacity-50 transition-colors z-10"
         onMouseDown={(e) => {
           e.preventDefault();
           isResizing.current = true;
@@ -128,24 +127,24 @@ export default function RightPanel() {
 
       <div className="flex-1 overflow-y-auto p-6 ml-2 flex flex-col">
         {/* Header */}
-        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100">
+        <div className="flex justify-between items-center mb-6 pb-4 border-b border-gray-100 dark:border-gray-800 transition-colors duration-200">
           <div className="flex items-center gap-3">
             {/* Show Back Button only if viewing a document */}
             {activeDocumentId && (
               <button 
                 onClick={() => setActiveDocument(null)}
-                className="text-sm px-2 py-1 bg-gray-100 hover:bg-gray-200 rounded text-gray-700 transition-colors"
+                className="text-sm px-2 py-1 bg-gray-100 dark:bg-gray-800 hover:bg-gray-200 dark:hover:bg-gray-700 rounded text-gray-700 dark:text-gray-300 transition-colors"
               >
                 ← Back
               </button>
             )}
-            <h2 className="text-lg font-semibold text-gray-800">
+            <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-100 transition-colors">
               {activeDocumentId ? "Document Viewer" : listTitle}
             </h2>
           </div>
           <button 
             onClick={() => setRightPanelOpen(false)}
-            className="text-gray-400 hover:text-gray-800 transition-colors"
+            className="text-gray-400 dark:text-gray-500 hover:text-gray-800 dark:hover:text-gray-200 transition-colors"
           >
             ✕
           </button>
@@ -155,18 +154,18 @@ export default function RightPanel() {
         {!activeDocumentId && (
           <div className="flex flex-col gap-3">
             {documents.length === 0 ? (
-              <p className="text-gray-500 text-sm">No documents found for this session.</p>
+              <p className="text-gray-500 dark:text-gray-400 text-sm transition-colors">No documents found for this session.</p>
             ) : (
               documents.map((doc) => (
                 <div
                   key={doc.id}
                   onClick={() => setActiveDocument(doc.id)}
-                  className="flex items-center justify-between p-4 border border-gray-200 rounded-xl hover:border-blue-400 hover:bg-blue-50 transition-all group cursor-pointer"
+                  className="flex items-center justify-between p-4 border border-gray-200 dark:border-gray-700 rounded-xl hover:border-blue-400 dark:hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/20 transition-all group cursor-pointer"
                 >
                   {/* Left Side: Icon and Title */}
                   <div className="flex items-center gap-3">
                     <span className="text-2xl group-hover:scale-110 transition-transform">📄</span>
-                    <span className="text-sm font-medium text-gray-700 group-hover:text-blue-700">
+                    <span className="text-sm font-medium text-gray-700 dark:text-gray-300 group-hover:text-blue-700 dark:group-hover:text-blue-400 transition-colors">
                       {doc.filename.replace('.md', '').replace(/_/g, ' ')}
                     </span>
                   </div>
@@ -174,7 +173,7 @@ export default function RightPanel() {
                   {/* Right Side: Download Icon Button */}
                   <button
                     onClick={(e) => handleDownload(doc.id, doc.filename, e)}
-                    className="p-2 text-gray-400 hover:text-blue-700 hover:bg-blue-100 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
+                    className="p-2 text-gray-400 dark:text-gray-500 hover:text-blue-700 dark:hover:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 rounded-lg transition-colors opacity-0 group-hover:opacity-100 focus:opacity-100"
                     title="Download Markdown"
                   >
                     <svg 
@@ -199,20 +198,20 @@ export default function RightPanel() {
           <div className="flex-1">
             {isLoading ? (
               <div className="animate-pulse flex flex-col gap-4">
-                <div className="h-4 bg-gray-200 rounded w-3/4"></div>
-                <div className="h-4 bg-gray-200 rounded w-full"></div>
-                <div className="h-4 bg-gray-200 rounded w-5/6"></div>
-                <div className="h-4 bg-gray-200 rounded w-full mt-4"></div>
-                <div className="h-4 bg-gray-200 rounded w-4/5"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-3/4 transition-colors"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full transition-colors"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-5/6 transition-colors"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-full mt-4 transition-colors"></div>
+                <div className="h-4 bg-gray-200 dark:bg-gray-700 rounded w-4/5 transition-colors"></div>
               </div>
             ) : (
-              <div className="prose prose-sm md:prose-base max-w-none text-gray-800">
+              <div className="prose prose-sm md:prose-base dark:prose-invert max-w-none text-gray-800 dark:text-gray-200 transition-colors">
                 {content ? (
                   <ReactMarkdown remarkPlugins={[remarkGfm]}>
                     {content}
                   </ReactMarkdown>
                 ) : (
-                  <p className="text-red-500">Failed to load content.</p>
+                  <p className="text-red-500 dark:text-red-400 transition-colors">Failed to load content.</p>
                 )}
               </div>
             )}

@@ -30,27 +30,27 @@ export default function NewSpaceModal() {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm">
-      <div className="bg-white rounded-xl shadow-lg w-full max-w-md p-6 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 dark:bg-black/70 backdrop-blur-sm transition-colors duration-200">
+      <div className="bg-white dark:bg-gray-900 border border-transparent dark:border-gray-800 rounded-xl shadow-lg w-full max-w-md p-6 relative transition-colors duration-200">
         <button 
           onClick={() => setNewSpaceModalOpen(false)}
-          className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 transition-colors"
+          className="absolute top-4 right-4 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 transition-colors"
           disabled={isSubmitting}
         >
           <X size={20} />
         </button>
         
-        <h2 className="text-xl font-semibold mb-4 text-gray-800">Create New Space</h2>
+        <h2 className="text-xl font-semibold mb-4 text-gray-800 dark:text-gray-100 transition-colors">Create New Space</h2>
         
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors">
               Select Tool
             </label>
             <select 
               value={selectedTool}
               onChange={(e) => setSelectedTool(e.target.value as 'summary' | 'research')}
-              className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white"
+              className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 transition-colors"
               disabled={isSubmitting}
             >
               <option value="summary">Summary Agent</option>
@@ -59,7 +59,7 @@ export default function NewSpaceModal() {
           </div>
 
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1 transition-colors">
               Space Name
             </label>
             <input 
@@ -67,7 +67,7 @@ export default function NewSpaceModal() {
               value={spaceName}
               onChange={(e) => setSpaceName(e.target.value)}
               placeholder="e.g., Quantum Physics"
-              className="w-full border border-gray-300 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
+              className="w-full border border-gray-300 dark:border-gray-700 rounded-lg p-2.5 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none bg-white dark:bg-gray-800 text-gray-900 dark:text-gray-100 placeholder-gray-400 dark:placeholder-gray-500 transition-colors"
               autoFocus
               required
               disabled={isSubmitting}
@@ -78,7 +78,7 @@ export default function NewSpaceModal() {
             <button
               type="button"
               onClick={() => setNewSpaceModalOpen(false)}
-              className="px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-100 rounded-lg transition-colors"
+              className="px-4 py-2 text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
               disabled={isSubmitting}
             >
               Cancel
@@ -86,7 +86,7 @@ export default function NewSpaceModal() {
             <button
               type="submit"
               disabled={!spaceName.trim() || isSubmitting}
-              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]"
+              className="px-4 py-2 text-sm font-medium text-white bg-blue-600 dark:bg-blue-500 hover:bg-blue-700 dark:hover:bg-blue-600 rounded-lg transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center min-w-[120px]"
             >
               {isSubmitting ? 'Creating...' : 'Create Space'}
             </button>
