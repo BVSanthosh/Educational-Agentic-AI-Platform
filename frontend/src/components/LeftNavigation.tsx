@@ -15,6 +15,7 @@ import {
   Sun,
   Moon
 } from 'lucide-react';
+import toast from 'react-hot-toast';
  
 export default function LeftNavigation() {
   const navigate = useNavigate();
@@ -61,8 +62,8 @@ export default function LeftNavigation() {
         method: 'POST',
         credentials: 'include',
       });
-    } catch (error) {
-      console.error('Logout error:', error);
+    } catch {
+      toast.error('Logout error');
     } finally {
       // Clear local Zustand state & localStorage, then redirect
       logout();

@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import type { AppState, ToolType, Session, Message, UploadStatus, DocumentMeta } from '../types';
+import toast from 'react-hot-toast';
 
 interface AppStore extends AppState { 
   toggleTheme: () => void;
@@ -142,8 +143,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
           activeDocumentId: null 
         });
       }
-    } catch (error) {
-      console.error(`Failed to load data for space ${spaceId}:`, error);
+    } catch {
+      toast.error("Failed to load data");
     }
   },
 
@@ -199,8 +200,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         isNewSpaceModalOpen: false
       });
       
-    } catch (error) {
-      console.error("Space creation error:", error);
+    } catch {
+      toast.error("Failed to create new space");
     }
   },
 
@@ -237,8 +238,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
       set({ referenceSpaceId: newSpace.id });
       return newSpace.id;
 
-    } catch (error) {
-      console.error("Reference space initialization failed:", error);
+    } catch {
+      toast.error("Failed to initialise Reference space");
       return null;
     }
   },
@@ -294,8 +295,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }
       });
 
-    } catch (error) {
-      console.error("Failed to load spaces from backend:", error);
+    } catch {
+      toast.error("Failed to load spaces");
     }
   },
 
@@ -359,8 +360,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
         };
       });
 
-    } catch (error) {
-      console.error(`Failed to delete space ${spaceId}:`, error);
+    } catch {
+      toast.error("Failed to delete space");
     }
   },
 }));

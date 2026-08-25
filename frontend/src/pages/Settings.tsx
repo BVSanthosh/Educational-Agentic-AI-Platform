@@ -2,12 +2,12 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import toast from 'react-hot-toast'; 
 
 export default function Settings() {
   const navigate = useNavigate();
   const { token, logout } = useAppStore();
   const [isDeleting, setIsDeleting] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const handleDeleteAccount = async () => {
     // 1. Prompt the user to confirm this destructive action
@@ -18,7 +18,6 @@ export default function Settings() {
     if (!confirmed) return;
     
     setIsDeleting(true);
-    setError(null);
     
     try {
       // 2. Call the backend API to delete the user
@@ -35,15 +34,13 @@ export default function Settings() {
       
       // 3. Clear Zustand state, clear localStorage, and kick to login
       logout();
+      toast.success('Your account has been permanently deleted.');
       navigate('/login');
     } catch (err) {
-      console.error("Error deleting account:", err);
-      
-      // Safely check if 'err' is an Error object instead of using 'any'
       if (err instanceof Error) {
-        setError(err.message);
+        toast.error(err.message);
       } else {
-        setError('An error occurred while deleting your account.');
+        toast.error('An error occurred while deleting your account.');
       }
       
       setIsDeleting(false);
@@ -77,12 +74,6 @@ export default function Settings() {
                 This includes all of your workspaces, uploaded documents, and chat histories. 
                 <strong className="text-gray-900 dark:text-gray-200 transition-colors"> This action is not reversible.</strong>
               </p>
-              
-              {error && (
-                <div className="mb-6 p-3 bg-red-50 dark:bg-red-950/50 border border-red-100 dark:border-red-900/50 text-red-600 dark:text-red-400 rounded-lg text-sm transition-colors">
-                  {error}
-                </div>
-              )}
 
               <button
                 onClick={handleDeleteAccount}

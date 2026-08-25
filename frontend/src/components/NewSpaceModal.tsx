@@ -18,7 +18,6 @@ export default function NewSpaceModal() {
     if (!spaceName.trim()) return;
     
     setIsSubmitting(true);
-    // Call the async store function (hits your FastAPI backend)
     const uploadStatus: 'chat' | 'upload' = selectedTool === "summary" ? "upload" : "chat"
     await createNewSpace(selectedTool, spaceName, uploadStatus);
     

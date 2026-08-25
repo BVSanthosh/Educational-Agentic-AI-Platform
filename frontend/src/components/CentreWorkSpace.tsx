@@ -14,6 +14,7 @@ import {
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message } from '../types'; 
+import toast from 'react-hot-toast';
 
 export default function CentreWorkspace() {
   const { 
@@ -109,7 +110,7 @@ export default function CentreWorkspace() {
     const file = e.dataTransfer.files?.[0];
     if (file) {
       if (file.type !== 'application/pdf') {
-        alert("Only PDF documents are supported.");
+        toast.error("Only PDF documents are supported.");
       } else {
         handleFileUpload(file);
       }
@@ -123,29 +124,85 @@ export default function CentreWorkspace() {
   const handleFileUpload = async (file: File) => {
     if (!activeSession) return;
 
+    const MAX_FILE_SIZE = 10485760; 
+    if (file.size > MAX_FILE_SIZE) {
+      toast.error(`File is too large. Please upload a file smaller than 10MB.`);
+      return; 
+    }
+
     const spaceId = activeSession.id;
     const store = useAppStore.getState();
 
     // Instantly switch to Chat view and set progress
     store.updateSessionState('summary', spaceId, 'chat');
-    store.setAgentProgress("Uploading and parsing document...");
-
-    const formData = new FormData();
-    formData.append("file", file);
-    formData.append("space_id", spaceId);
+    store.setAgentProgress("Uploading document...");
 
     const agentMessageId = crypto.randomUUID();
     let agentMessageAdded = false;
     let accumulatedText = "";
 
     try {
-      const response = await fetch(`http://localhost:8000/api/summary/uploadfile`, {
+      // ----------------------------------------------------
+      // STEP 1: Get Presigned S3 URL from Backend
+      // ----------------------------------------------------
+      const presignedRes = await fetch(`http://localhost:8000/api/summary/presigned-url`, {
         method: 'POST',
-        headers: { 
+        headers: {
+          'Content-Type': 'application/json',
           ...(token ? { 'Authorization': `Bearer ${token}` } : {})
         },
         credentials: 'include',
-        body: formData 
+        body: JSON.stringify({
+          filename: file.name,
+          content_type: file.type || 'application/octet-stream',
+          space_id: spaceId
+        })
+      });
+
+      if (!presignedRes.ok) {
+        throw new Error('Failed to generate secure S3 upload URL');
+      }
+
+      const { upload_data, s3_key } = await presignedRes.json();
+
+      // ----------------------------------------------------
+      // STEP 2: Direct Binary Upload to Amazon S3
+      // ----------------------------------------------------
+      const s3FormData = new FormData();
+      
+      // Append all required AWS signature fields first
+      Object.entries(upload_data.fields).forEach(([key, value]) => {
+        s3FormData.append(key, value as string);
+      });
+      // The actual file MUST be appended last
+      s3FormData.append("file", file); 
+
+      const s3UploadRes = await fetch(upload_data.url, {
+        method: 'POST', 
+        body: s3FormData
+      });
+
+      if (!s3UploadRes.ok) {
+        throw new Error('Direct upload to Amazon S3 failed');
+      }
+
+      // ----------------------------------------------------
+      // STEP 3: Stream Summary Processing from Backend
+      // ----------------------------------------------------
+      store.setAgentProgress("Parsing and summarizing document...");
+
+      const response = await fetch(`http://localhost:8000/api/summary/process-document`, {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+        },
+        credentials: 'include',
+        body: JSON.stringify({
+          s3_key: s3_key,
+          filename: file.name,
+          space_id: spaceId
+        }) 
       });
 
       if (!response.ok || !response.body) {
@@ -214,9 +271,14 @@ export default function CentreWorkspace() {
         }
       }
     } catch (error) {
-      console.error("Upload stream error:", error);
       store.setAgentProgress(null);
       store.updateSessionState('summary', spaceId, 'upload');
+
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Failed to upload and process the document.");
+      }
     }
   };
 
@@ -361,9 +423,14 @@ export default function CentreWorkspace() {
         }
       }
     } catch (error) {
-      console.error("API request error:", error);
       setIsProcessing(false);
       useAppStore.getState().setAgentProgress(null);
+
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("An error occurred while processing your request.");
+      }
     }
   };
 

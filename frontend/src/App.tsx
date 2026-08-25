@@ -1,4 +1,5 @@
 import { useEffect } from 'react';
+import { Toaster } from 'react-hot-toast';
 import { BrowserRouter as Router, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import Workspace from './pages/Workspace';
 import Login from './pages/Login';
@@ -6,6 +7,7 @@ import Register from './pages/Register';
 import Settings from './pages/Settings';
 import ProtectedRoute from './components/ProtectedRoute';
 import { useAppStore } from './store/useAppStore';
+
 
 // 1. Helper component to keep logged-in users OUT of auth pages
 const PublicRoute = () => {
@@ -28,6 +30,17 @@ export default function App() {
 
   return (
     <Router>
+      <Toaster 
+        position="top-center" 
+        toastOptions={{
+          duration: 4000,
+          style: {
+            background: theme === 'dark' ? '#333' : '#fff',
+            color: theme === 'dark' ? '#fff' : '#333',
+            border: theme === 'dark' ? '1px solid #444' : '1px solid #eaeaea'
+          },
+        }} 
+      />
       <Routes>
         {/* Auth Routes - Wrapped in our new PublicRoute */}
         <Route element={<PublicRoute />}>

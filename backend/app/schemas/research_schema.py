@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal
 
 class ResearchRequest(BaseModel): 
@@ -25,4 +25,9 @@ class Feedback(BaseModel):
     feedback: str
 
 class ResarchSubject(BaseModel):
-    subject_matter: str
+    subject_matter: str = Field(
+        description="The detailed topic or prompt to research."
+    )
+    report_name: str = Field(
+        description="A short, catchy, and highly descriptive filename for the report (e.g., 'Quantum_Computing_Q3_Analysis'). Do not include file extensions."
+    )

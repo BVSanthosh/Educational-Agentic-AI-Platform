@@ -10,16 +10,16 @@ from app.utils.s3_client import upload_document_to_s3
 from app.core.database import AsyncSessionLocal
 
 @tool(args_schema=ResarchSubject)
-async def write_research_report(subject_matter: str, config: RunnableConfig) -> str:
+async def write_research_report(subject_matter: str, report_name: str, config: RunnableConfig) -> str:
     """
-    Generates a research report given a subject matter
+    Generates a research report given a subject matter.
     """ 
     # Extract parent thread and metadata injected from stream_and_persist_research
     configurable = config.get("configurable", {})
     parent_thread = configurable.get("thread_id", "default")
     space_id_str = configurable.get("space_id")
     user_id_str = configurable.get("user_id")
-     
+      
     input: Any = {"subject_matter": subject_matter}
     subgraph_config: RunnableConfig = {
         "configurable": {"thread_id": f"{parent_thread}_subgraph"}
@@ -31,17 +31,22 @@ async def write_research_report(subject_matter: str, config: RunnableConfig) -> 
         config=subgraph_config
     )
     report_content = response["research_report"]
-    
+      
     try:
-    # 2. Upload to S3
-        s3_data = await upload_document_to_s3(report_content)
+        # 2. Format and enforce limits on the filename
+        # Replace non-alphanumeric characters (including spaces) with underscores
+        clean_name = "".join([c if c.isalnum() else "_" for c in report_name])
+        
+        # Strip trailing underscores and enforce a strict 250 character limit on the base name
+        # We leave 5 characters of buffer for the ".md" extension to ensure it safely fits in String(255)
+        truncated_name = clean_name.strip("_")[:250]
+        safe_filename = f"{truncated_name}.md"
 
-        # 3. Save directly to Database using a fresh session (avoids streaming conflicts)
+        # 3. Upload to S3 (Using the new signature: content, filename, folder)
+        s3_data = await upload_document_to_s3(report_content, truncated_name, "research")
+
+        # 4. Save directly to Database using a fresh session (avoids streaming conflicts)
         async with AsyncSessionLocal() as db_session:
-            clean_subject = "".join([c if c.isalnum() or c.isspace() else "_" for c in subject_matter])
-            truncated_name = clean_subject.strip()[:50].strip().replace(" ", "_")
-            safe_filename = f"{truncated_name}.md"
-            
             new_doc = Document(
                 space_id=UUID(space_id_str),
                 user_id=UUID(user_id_str),
@@ -55,7 +60,7 @@ async def write_research_report(subject_matter: str, config: RunnableConfig) -> 
             await db_session.commit()
             await db_session.refresh(new_doc)
 
-        # 4. Return JSON summary back to the LLM (NOT the full document)
+        # 5. Return JSON summary back to the LLM (NOT the full document)
         return json.dumps({
             "status": "success",
             "document_id": str(new_doc.id),

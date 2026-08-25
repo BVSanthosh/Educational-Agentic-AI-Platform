@@ -1,11 +1,12 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { Mail, Lock, User, ArrowRight, AlertCircle } from 'lucide-react';
-import { useAppStore } from '../store/useAppStore'; // <-- import store
+import { Mail, Lock, User, ArrowRight } from 'lucide-react'; 
+import { useAppStore } from '../store/useAppStore'; 
+import toast from 'react-hot-toast'; 
 
 export default function Register() {
   const navigate = useNavigate();
-  const setToken = useAppStore((state) => state.setToken); // <-- grab token setter
+  const setToken = useAppStore((state) => state.setToken); 
 
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -13,14 +14,12 @@ export default function Register() {
   const [confirmPassword, setConfirmPassword] = useState('');
   
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError('');
 
     if (password !== confirmPassword) {
-      setError('Passwords do not match');
+      toast.error('Passwords do not match');
       return;
     }
 
@@ -32,27 +31,26 @@ export default function Register() {
         headers: {
           'Content-Type': 'application/json',
         },
-        credentials: 'include', // Change to 'include' if CORS is enabled for cookies
+        credentials: 'include', 
         body: JSON.stringify({ username, email, password }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        // FastAPI throws a 409 Conflict if email or username exists
         throw new Error(data.detail || 'Registration failed');
       }
 
       // Save token and navigate
       setToken(data.access_token);
+      toast.success('Account created successfully!');
       navigate('/workspace');
 
     } catch (err) {
-      console.error('Request error:', err);
       if (err instanceof Error) {
-        setError(err.message);
+        toast.error(err.message);
       } else {
-        setError('Failed to connect to the server');
+        toast.error('Failed to connect to the server');
       }
     } finally {
       setIsLoading(false);
@@ -81,14 +79,6 @@ export default function Register() {
               Sign in here
             </Link>
           </p>
-
-          {/* --- Error Message --- */}
-          {error && (
-            <div className="mb-6 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl flex items-center gap-2 text-sm transition-colors">
-              <AlertCircle size={16} />
-              <p>{error}</p>
-            </div>
-          )}
 
           {/* --- Form --- */}
           <form className="space-y-5" onSubmit={handleRegister}>

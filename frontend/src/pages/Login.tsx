@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { User, Lock, ArrowRight, AlertCircle } from 'lucide-react';
+import { User, Lock, ArrowRight } from 'lucide-react'; 
 import { useAppStore } from '../store/useAppStore';
+import toast from 'react-hot-toast'; 
 
 export default function Login() {
   const navigate = useNavigate();
@@ -10,9 +11,8 @@ export default function Login() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState('');
 
-  // ✅ Check for Google OAuth code immediately on component mount
+  // Check for Google OAuth code immediately on component mount
   const queryParams = new URLSearchParams(window.location.search);
   const code = queryParams.get('code');
 
@@ -37,11 +37,12 @@ export default function Login() {
           setToken(data.access_token);
           await fetchSpaces();
           
+          toast.success('Successfully signed in with Google!');
           // Clear query params from URL and navigate smoothly
           navigate('/workspace', { replace: true });
         } catch (err) {
           console.error("Google login error:", err);
-          setError("Failed to sign in with Google. Please try again.");
+          toast.error("Failed to sign in with Google. Please try again.");
           window.history.replaceState({}, document.title, window.location.pathname);
         }
       };
@@ -65,7 +66,6 @@ export default function Login() {
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    setError('');
 
     try {
       const response = await fetch('http://localhost:8000/api/auth/login', {
@@ -86,15 +86,16 @@ export default function Login() {
       // Save the access_token to Zustand and localStorage
       setToken(data.access_token);
       
+      toast.success('Welcome back!');
       // Navigate to the secure workspace
       navigate('/workspace');
 
     } catch (err) {
       console.error('Request error:', err);
       if (err instanceof Error) {
-        setError(err.message);
+        toast.error(err.message);
       } else {
-        setError('Failed to connect to the server');
+        toast.error('Failed to connect to the server');
       }
     } finally {
       setIsLoading(false);
@@ -123,14 +124,6 @@ export default function Login() {
               create a new account
             </Link>
           </p>
-          
-          {/* --- Error Message --- */}
-          {error && (
-            <div className="mb-6 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900/50 text-red-600 dark:text-red-400 px-4 py-3 rounded-xl flex items-center gap-2 text-sm transition-colors">
-              <AlertCircle size={16} />
-              <p>{error}</p>
-            </div>
-          )}
 
           {/* --- Form --- */}
           <form className="space-y-6" onSubmit={handleLogin}>

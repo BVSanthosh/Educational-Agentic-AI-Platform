@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react';
 import { useAppStore } from '../store/useAppStore';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import toast from 'react-hot-toast';
 
 export default function RightPanel() {
   const { 
@@ -38,8 +39,8 @@ export default function RightPanel() {
           const data = await res.json();
           setContent(data.content);
         }
-      } catch (error) {
-        console.error("Failed to load document", error);
+      } catch {
+        toast.error("Failed to load document");
       } finally {
         setIsLoading(false);
       }
@@ -100,8 +101,8 @@ export default function RightPanel() {
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
       }
-    } catch (error) {
-      console.error("Failed to download document", error);
+    } catch {
+      toast.error("Failed to download document");
     }
   };
 

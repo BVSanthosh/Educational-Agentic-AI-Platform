@@ -1,74 +1,53 @@
 import aioboto3
-import os
-from app.core.config import env 
 from uuid import uuid4
-import aiofiles
+from app.core.config import env 
 
-# TEMPORARY MOCK until AWS is configured
-async def upload_document_to_s3(content: str, folder: str = "research_reports") -> dict:
-    os.makedirs(f"./temp_storage/{folder}", exist_ok=True)
-    file_name = f"{folder}/{uuid4()}.md"
-    file_path = f"./temp_storage/{file_name}"
+# Create a module-level session for reusing connections
+boto_session = aioboto3.Session()
+
+async def upload_document_to_s3(content: str, filename: str, folder: str) -> dict:
+    """
+    Uploads a markdown string directly from memory to AWS S3.
+    """
+    # Generate the unique S3 path
+    s3_key = f"{folder}/{filename}_{uuid4()}.md"
     
+    # Convert the string to bytes
     content_bytes = content.encode("utf-8")
+    file_size = len(content_bytes)
+    mime_type = "text/markdown"
     
-    async with aiofiles.open(file_path, 'wb') as out_file:
-        await out_file.write(content_bytes)
+    # Write directly to S3
+    async with boto_session.client("s3") as s3:
+        await s3.put_object(
+            Bucket=env.AWS_S3_BUCKET_NAME,
+            Key=s3_key,
+            Body=content_bytes,
+            ContentType=mime_type
+        )
         
+    # Construct a standard S3 object URL
+    # Note: If your bucket is private, this URL won't be publicly accessible in a browser.
+    # The application will use the `s3_key` to fetch it securely via the backend.
+    s3_url = f"https://{env.AWS_S3_BUCKET_NAME}.s3.amazonaws.com/{s3_key}"
+
     return {
-        "s3_key": file_path, 
-        "url": f"http://localhost:8000/{file_path}", # Fake local URL
-        "file_size_bytes": len(content_bytes),
-        "mime_type": "text/markdown"
+        "s3_key": s3_key, 
+        "url": s3_url, 
+        "file_size_bytes": file_size,
+        "mime_type": mime_type
     }
 
 async def read_document_from_s3(s3_key: str) -> str:
-    async with aiofiles.open(s3_key, 'rb') as in_file:
-        content_bytes = await in_file.read()
-        return content_bytes.decode("utf-8")
-
-"""
-async def upload_document_to_s3(content: str, folder: str = "research_reports") -> dict:
-    session = aioboto3.Session()
-    file_name = f"{folder}/{uuid4()}.md"
-    bucket_name = env.AWS_S3_BUCKET_NAME
-    
-    # Calculate exact byte size for your database model
-    content_bytes = content.encode("utf-8")
-    file_size_bytes = len(content_bytes)
-
-    async with session.client('s3',
-        aws_access_key_id=env.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=env.AWS_SECRET_ACCESS_KEY,
-        region_name=env.AWS_REGION
-    ) as s3:
-        await s3.put_object(
-            Bucket=bucket_name,
-            Key=file_name,
-            Body=content_bytes,
-            ContentType="text/markdown"
+    """
+    Reads a document directly from AWS S3 into memory and returns it as a string.
+    """
+    async with boto_session.client("s3") as s3:
+        response = await s3.get_object(
+            Bucket=env.AWS_S3_BUCKET_NAME,
+            Key=s3_key
         )
         
-        url = f"https://{bucket_name}.s3.{env.AWS_REGION}.amazonaws.com/{file_name}"
-        
-        return {
-            "s3_key": file_name, 
-            "url": url,
-            "file_size_bytes": file_size_bytes,
-            "mime_type": "text/markdown"
-        }
-
-async def read_document_from_s3(s3_key: str) -> str:
-    session = aioboto3.Session()
-    bucket_name = env.AWS_S3_BUCKET_NAME
-    
-    async with session.client('s3',
-        aws_access_key_id=env.AWS_ACCESS_KEY_ID,
-        aws_secret_access_key=env.AWS_SECRET_ACCESS_KEY,
-        region_name=env.AWS_REGION
-    ) as s3:  
-        response = await s3.get_object(Bucket=bucket_name, Key=s3_key)
-        async with response["Body"] as body:
-            content_bytes = await body.read()
-            return content_bytes.decode("utf-8")
-"""  
+        # In aioboto3, the 'Body' is an async stream that must be awaited
+        content_bytes = await response['Body'].read()
+        return content_bytes.decode("utf-8")
