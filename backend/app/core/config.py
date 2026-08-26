@@ -10,6 +10,8 @@ class Settings(BaseSettings):
         env_file_encoding="utf-8", 
         validate_default=False
     )
+    
+    FRONTEND_URL: str = "http://localhost:5173"
 
     # Application Server
     PRODUCTION: bool = False
