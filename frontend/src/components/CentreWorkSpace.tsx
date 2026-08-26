@@ -15,6 +15,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import type { Message } from '../types'; 
 import toast from 'react-hot-toast';
+import { API_BASE_URL } from '../api/config';
 
 export default function CentreWorkspace() {
   const { 
@@ -22,15 +23,11 @@ export default function CentreWorkspace() {
     activeSessionId, 
     sessions, 
     addMessage, 
-    updateStreamingMessage, 
     token, 
     ensureReferenceSpaceExists,
     loadSpaceData, 
     activeChat, 
     activeReferences,
-    setAgentProgress,
-    setActiveDocument,
-    addDocumentToActiveChat
   } = useAppStore();
 
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -39,30 +36,55 @@ export default function CentreWorkspace() {
   const prevMessagesLength = useRef(0);
 
   const [inputValue, setInputValue] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+
+  // 1. DYNAMIC GLOBAL PROCESSING CHECK
+  const store = useAppStore();
+  const isProcessing = activeSessionId 
+    ? !!store.liveStreams[activeSessionId]?.isProcessing 
+    : (activeTool === 'reference' && store.referenceSpaceId 
+        ? !!store.liveStreams[store.referenceSpaceId]?.isProcessing 
+        : false);
 
   const currentViewKey = `${activeTool}-${activeSessionId}`;
   const [prevViewKey, setPrevViewKey] = useState(currentViewKey);
 
+  // Clear input when switching spaces
   if (currentViewKey !== prevViewKey) {
     setPrevViewKey(currentViewKey);
-    setIsProcessing(false);
     setInputValue('');
   }
 
-  // Determine the active session for conditional UI rendering (upload vs chat views)
+  // Determine the active session for conditional UI rendering
   const activeSession = activeTool !== 'reference' && activeSessionId
     ? sessions[activeTool].find(s => s.id === activeSessionId)
     : null;
 
-  // --- AUTO-FETCH HISTORY HOOK ---
+  // --- AUTO-FETCH HISTORY HOOK WITH STREAM RECOVERY ---
   useEffect(() => {
     const fetchContextData = async () => {
+      let currentSpaceId = activeSessionId;
+
       if (activeTool === 'reference') {
-        const spaceId = await ensureReferenceSpaceExists();
-        if (spaceId) await loadSpaceData(spaceId, 'reference');
-      } else if (activeSessionId) {
-        await loadSpaceData(activeSessionId, activeTool);
+        currentSpaceId = await ensureReferenceSpaceExists();
+        if (currentSpaceId) await loadSpaceData(currentSpaceId, 'reference');
+      } else if (currentSpaceId) {
+        await loadSpaceData(currentSpaceId, activeTool);
+      }
+
+      // RECOVER LIVE STREAM STATE IF BACKGROUND PROCESS IS RUNNING
+      if (currentSpaceId) {
+        const liveStream = useAppStore.getState().liveStreams[currentSpaceId];
+        if (liveStream) {
+          useAppStore.getState().setAgentProgress(liveStream.progress);
+          
+          if (liveStream.accumulatedText.length > 0 && activeTool !== 'reference') {
+             useAppStore.getState().addMessage({
+               id: liveStream.messageId,
+               role: 'agent',
+               content: liveStream.accumulatedText
+             });
+          }
+        }
       }
     };
     
@@ -79,15 +101,11 @@ export default function CentreWorkspace() {
   useEffect(() => {
     const currentLength = activeChat?.messages?.length || 0;
     
-    // We want to INSTANT scroll if:
-    // A) We just clicked a different space in the sidebar
-    // B) The chat history just finished fetching from the database (jumped from 0 to X messages)
     const isSpaceSwitch = prevSessionIdRef.current !== activeSessionId;
     const isHistoryLoad = prevMessagesLength.current === 0 && currentLength > 0 && !isProcessing;
     
     scrollToBottom(isSpaceSwitch || isHistoryLoad);
     
-    // Update our trackers for the next render
     prevSessionIdRef.current = activeSessionId;
     prevMessagesLength.current = currentLength;
   }, [activeChat?.messages, activeChat?.agentProgress, isProcessing, activeSessionId]);
@@ -133,19 +151,22 @@ export default function CentreWorkspace() {
     const spaceId = activeSession.id;
     const store = useAppStore.getState();
 
-    // Instantly switch to Chat view and set progress
+    // Instantly switch to Chat view
     store.updateSessionState('summary', spaceId, 'chat');
-    store.setAgentProgress("Uploading document...");
 
     const agentMessageId = crypto.randomUUID();
     let agentMessageAdded = false;
     let accumulatedText = "";
 
+    // Initialize global stream tracker for uploads
+    store.initLiveStream(spaceId, agentMessageId);
+    store.updateLiveStreamProgress(spaceId, "Uploading document...");
+
     try {
       // ----------------------------------------------------
       // STEP 1: Get Presigned S3 URL from Backend
       // ----------------------------------------------------
-      const presignedRes = await fetch(`http://localhost:8000/api/summary/presigned-url`, {
+      const presignedRes = await fetch(`${API_BASE_URL}/api/summary/presigned-url`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -169,12 +190,9 @@ export default function CentreWorkspace() {
       // STEP 2: Direct Binary Upload to Amazon S3
       // ----------------------------------------------------
       const s3FormData = new FormData();
-      
-      // Append all required AWS signature fields first
       Object.entries(upload_data.fields).forEach(([key, value]) => {
         s3FormData.append(key, value as string);
       });
-      // The actual file MUST be appended last
       s3FormData.append("file", file); 
 
       const s3UploadRes = await fetch(upload_data.url, {
@@ -189,9 +207,9 @@ export default function CentreWorkspace() {
       // ----------------------------------------------------
       // STEP 3: Stream Summary Processing from Backend
       // ----------------------------------------------------
-      store.setAgentProgress("Parsing and summarizing document...");
+      store.updateLiveStreamProgress(spaceId, "Parsing and summarizing document...");
 
-      const response = await fetch(`http://localhost:8000/api/summary/process-document`, {
+      const response = await fetch(`${API_BASE_URL}/api/summary/process-document`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -225,44 +243,45 @@ export default function CentreWorkspace() {
           if (event.startsWith('data: ')) {
             try {
               const payload = JSON.parse(event.slice(6));
-              const currentStore = useAppStore.getState();
-
-              // Block UI updates if user navigated away during upload
-              if (currentStore.activeSessionId !== spaceId) {
-                continue;
-              }
 
               if (payload.type === 'progress') {
-                currentStore.setAgentProgress(payload.message);
+                store.updateLiveStreamProgress(spaceId, payload.message);
               } 
               else if (payload.type === 'token') {
                 if (!agentMessageAdded) {
-                  currentStore.addMessage({
-                    id: agentMessageId,
-                    role: 'agent',
-                    content: '',
-                  });
+                  // Only inject the blank agent bubble if they are actively looking at this space
+                  const currentState = useAppStore.getState();
+                  if (currentState.activeSessionId === spaceId) {
+                    currentState.addMessage({
+                      id: agentMessageId,
+                      role: 'agent',
+                      content: '',
+                    });
+                  }
                   agentMessageAdded = true;
-                  currentStore.setAgentProgress(null); 
+                  store.updateLiveStreamProgress(spaceId, null); 
                 }
                 accumulatedText += payload.content;
-                currentStore.updateStreamingMessage(agentMessageId, accumulatedText);
+                store.updateLiveStreamText(spaceId, accumulatedText);
               } 
               else if (payload.type === 'document_ready') {
                 const docId = payload.document_id || payload.id;
                 if (docId) {
-                  currentStore.addDocumentToActiveChat({
-                    id: docId,
-                    filename: payload.filename || file.name
-                  });
-                  currentStore.setActiveDocument(docId);
+                  const currentState = useAppStore.getState();
+                  if (currentState.activeSessionId === spaceId) {
+                    currentState.addDocumentToActiveChat({
+                      id: docId,
+                      filename: payload.filename || file.name
+                    });
+                    currentState.setActiveDocument(docId);
+                  }
                 }
               } 
               else if (payload.type === 'error') {
-                currentStore.setAgentProgress(`Error: ${payload.message}`);
+                store.updateLiveStreamProgress(spaceId, `Error: ${payload.message}`);
               } 
               else if (payload.type === 'done') {
-                currentStore.setAgentProgress(null);
+                store.updateLiveStreamProgress(spaceId, null);
               }
             } catch (err) {
               console.warn("Failed to parse SSE JSON:", event, err);
@@ -271,7 +290,7 @@ export default function CentreWorkspace() {
         }
       }
     } catch (error) {
-      store.setAgentProgress(null);
+      // Revert to upload screen if it completely fails
       store.updateSessionState('summary', spaceId, 'upload');
 
       if (error instanceof Error) {
@@ -279,6 +298,9 @@ export default function CentreWorkspace() {
       } else {
         toast.error("Failed to upload and process the document.");
       }
+    } finally {
+      // ALWAYS remove the lock when finished, even if the user clicked away or if it failed
+      store.endLiveStream(spaceId);
     }
   };
 
@@ -288,7 +310,6 @@ export default function CentreWorkspace() {
 
     const query = inputValue;
     setInputValue('');
-    setIsProcessing(true);
 
     try {
       // -------------------------------------------------------------
@@ -298,25 +319,29 @@ export default function CentreWorkspace() {
         const spaceId = await ensureReferenceSpaceExists();
         if (!spaceId) throw new Error("Could not initialize the reference space.");
 
-        // Reset previous references and show progress only
+        // Lock UI and show progress globally
+        store.initLiveStream(spaceId, 'reference-processing');
+        store.updateLiveStreamProgress(spaceId, "Searching and generating academic references...");
         useAppStore.setState({ activeReferences: null });
-        setAgentProgress("Searching and generating academic references...");
 
-        const res = await fetch(`http://localhost:8000/api/references/${spaceId}`, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json', 
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
-          credentials: 'include',
-          body: JSON.stringify({ user_input: query }) 
-        });
+        try {
+          const res = await fetch(`${API_BASE_URL}/api/references/${spaceId}`, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json', 
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            credentials: 'include',
+            body: JSON.stringify({ user_input: query }) 
+          });
 
-        if (!res.ok) throw new Error('Failed to generate references');
-        
-        await loadSpaceData(spaceId, 'reference');
-        setAgentProgress(null);
-        setIsProcessing(false);
+          if (!res.ok) throw new Error('Failed to generate references');
+          
+          await loadSpaceData(spaceId, 'reference');
+        } finally {
+          // Guarantee the stream lock is removed
+          store.endLiveStream(spaceId);
+        }
       }
       
       // -------------------------------------------------------------
@@ -333,99 +358,101 @@ export default function CentreWorkspace() {
         addMessage(userMessage); 
 
         const agentMessageId = crypto.randomUUID();
-        const store = useAppStore.getState();
-        store.setAgentProgress("Analyzing request...");
-        setIsProcessing(false);
+        
+        // Initialize background stream tracker
+        store.initLiveStream(spaceId, agentMessageId);
+        store.updateLiveStreamProgress(spaceId, "Analyzing request...");
 
         const endpoint = activeTool === 'summary' 
-          ? `http://localhost:8000/api/summary/${spaceId}/query`
-          : `http://localhost:8000/api/research/${spaceId}/stream`;
+          ? `${API_BASE_URL}/api/summary/${spaceId}/query`
+          : `${API_BASE_URL}/api/research/${spaceId}/stream`;
 
-        const response = await fetch(endpoint, {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json', 
-            ...(token ? { 'Authorization': `Bearer ${token}` } : {})
-          },
-          credentials: 'include',
-          body: JSON.stringify({ user_input: query })
-        });
+        try {
+          const response = await fetch(endpoint, {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json', 
+              ...(token ? { 'Authorization': `Bearer ${token}` } : {})
+            },
+            credentials: 'include',
+            body: JSON.stringify({ user_input: query })
+          });
 
-        if (!response.ok || !response.body) {
-          throw new Error('Failed to stream response from backend');
-        }
+          if (!response.ok || !response.body) {
+            throw new Error('Failed to stream response from backend');
+          }
 
-        const reader = response.body.getReader();
-        const decoder = new TextDecoder();
-        let buffer = '';
-        let accumulatedText = '';
-        let agentMessageAdded = false; 
+          const reader = response.body.getReader();
+          const decoder = new TextDecoder();
+          let buffer = '';
+          let accumulatedText = '';
+          let agentMessageAdded = false; 
 
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
 
-          buffer += decoder.decode(value, { stream: true });
-          const events = buffer.split('\n\n');
-          buffer = events.pop() || ''; 
+            buffer += decoder.decode(value, { stream: true });
+            const events = buffer.split('\n\n');
+            buffer = events.pop() || ''; 
 
-          for (const event of events) {
-            if (event.startsWith('data: ')) {
-              try {
-                // Get the absolutely latest state from the store
-                const currentStore = useAppStore.getState();
-                
-                // If the user switched to a different space, IGNORE the UI updates!
-                if (currentStore.activeSessionId !== spaceId) {
-                  continue; 
-                }
+            for (const event of events) {
+              if (event.startsWith('data: ')) {
+                try {
+                  const payload = JSON.parse(event.slice(6));
 
-                const payload = JSON.parse(event.slice(6));
-
-                if (payload.type === 'progress') {
-                  store.setAgentProgress(payload.message);
-                } 
-                else if (payload.type === 'token') {
-                  if (!agentMessageAdded) {
-                    addMessage({
-                      id: agentMessageId,
-                      role: 'agent',
-                      content: '',
-                    });
-                    agentMessageAdded = true;
-                    store.setAgentProgress(null); 
+                  if (payload.type === 'progress') {
+                    store.updateLiveStreamProgress(spaceId, payload.message);
+                  } 
+                  else if (payload.type === 'token') {
+                    if (!agentMessageAdded) {
+                      // Only inject the blank agent bubble if they are actively looking at this space
+                      const currentState = useAppStore.getState();
+                      if (currentState.activeSessionId === spaceId) {
+                        currentState.addMessage({
+                          id: agentMessageId,
+                          role: 'agent',
+                          content: '',
+                        });
+                      }
+                      agentMessageAdded = true;
+                      store.updateLiveStreamProgress(spaceId, null); 
+                    }
+                    
+                    accumulatedText += payload.content;
+                    store.updateLiveStreamText(spaceId, accumulatedText);
+                  } 
+                  else if (payload.type === 'document_ready') {
+                    const docId = payload.document_id || payload.id;
+                    if (docId) {
+                      const currentState = useAppStore.getState();
+                      if (currentState.activeSessionId === spaceId) {
+                        currentState.addDocumentToActiveChat({
+                          id: docId,
+                          filename: payload.filename || "Research_Report.md"
+                        });
+                        currentState.setActiveDocument(docId);
+                      }
+                    }
                   }
-                  accumulatedText += payload.content;
-                  updateStreamingMessage(agentMessageId, accumulatedText);
-                } 
-                else if (payload.type === 'document_ready') {
-                  const docId = payload.document_id || payload.id;
-                  if (!docId) return;
-                  
-                  store.setAgentProgress(null); 
-                  addDocumentToActiveChat({
-                    id: docId,
-                    filename: payload.filename || "Research_Report.md"
-                  });
-                  setActiveDocument(docId);
+                  else if (payload.type === 'error') {
+                     store.updateLiveStreamProgress(spaceId, `Error: ${payload.message}`);
+                  }
+                  else if (payload.type === 'done') {
+                     store.updateLiveStreamProgress(spaceId, null);
+                  }
+                } catch {
+                  console.warn("Failed to parse SSE JSON:", event);
                 }
-                else if (payload.type === 'error') {
-                  store.setAgentProgress(`Error: ${payload.message}`);
-                }
-                else if (payload.type === 'done') {
-                  store.setAgentProgress(null);
-                }
-              } catch {
-                console.warn("Failed to parse SSE JSON:", event);
               }
             }
           }
+        } finally {
+          // ALWAYS remove the lock when finished, even if the user clicked away
+          store.endLiveStream(spaceId);
         }
       }
     } catch (error) {
-      setIsProcessing(false);
-      useAppStore.getState().setAgentProgress(null);
-
       if (error instanceof Error) {
         toast.error(error.message);
       } else {

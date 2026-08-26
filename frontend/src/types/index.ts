@@ -2,6 +2,24 @@
 export type ToolType = 'reference' | 'summary' | 'research';
 export type UploadStatus = 'chat' | 'upload';
 
+export interface ConfirmationModalProps {
+  isOpen: boolean;
+  title?: string;
+  message: string;
+  confirmLabel?: string;
+  cancelLabel?: string;
+  isLoading?: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}
+
+export interface LiveStreamState {
+  isProcessing: boolean;
+  progress: string | null;
+  accumulatedText: string;
+  messageId: string;
+}
+
 export interface Message {
   id: string;
   role: 'user' | 'agent';
@@ -67,4 +85,6 @@ export interface AppState {
 
   // Global Reference Tool State
   referenceSpaceId: string | null;
+
+  liveStreams: Record<string, LiveStreamState>;
 }

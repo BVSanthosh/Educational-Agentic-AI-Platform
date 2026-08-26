@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import type { AppState, ToolType, Session, Message, UploadStatus, DocumentMeta } from '../types';
 import toast from 'react-hot-toast';
+import { API_BASE_URL } from '../api/config';
 
 interface AppStore extends AppState { 
   toggleTheme: () => void;
@@ -26,6 +27,11 @@ interface AppStore extends AppState {
   setAgentProgress: (progress: string | null) => void;
   setActiveDocument: (documentId: string | null) => void;
   addDocumentToActiveChat: (document: DocumentMeta) => void;
+
+  initLiveStream: (spaceId: string, messageId: string) => void;
+  updateLiveStreamProgress: (spaceId: string, progress: string | null) => void;
+  updateLiveStreamText: (spaceId: string, text: string) => void;
+  endLiveStream: (spaceId: string) => void;
 }
  
 export const useAppStore = create<AppStore>((set, get) => ({
@@ -40,6 +46,8 @@ export const useAppStore = create<AppStore>((set, get) => ({
   
   activeChat: null,
   activeReferences: null,
+
+  liveStreams: {},
 
   sessions: {
     summary: [],
@@ -74,7 +82,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
       activeTool: 'reference', 
       activeChat: null,      
       activeReferences: null,
-      activeDocumentId: null, // ✅ Reset on logout
+      activeDocumentId: null, 
       isRightPanelOpen: false,
       sessions: { summary: [], research: [] } 
     });
@@ -84,7 +92,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   setActiveTool: (tool) => set((state) => {
     // If the tool hasn't changed, do nothing! (Stops screen wipe)
     if (state.activeTool === tool) return state;
-    
+     
     return { 
       activeTool: tool, 
       activeChat: null, 
@@ -116,7 +124,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (!state.token) return;
 
     try {
-      const response = await fetch(`http://localhost:8000/api/space/${spaceId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/space/${spaceId}`, {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${state.token}` }
       });
@@ -177,7 +185,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
   createNewSpace: async (tool, spaceName, uploadStatus) => {
     try {
       const state = get();
-      const response = await fetch('http://localhost:8000/api/space/', {
+      const response = await fetch(`${API_BASE_URL}/api/space/`, {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -210,7 +218,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (state.referenceSpaceId) return state.referenceSpaceId;
 
     try {
-      const fetchRes = await fetch('http://localhost:8000/api/space/?tool=reference', {
+      const fetchRes = await fetch(`${API_BASE_URL}/api/space/?tool=reference`, {
         headers: { 'Authorization': `Bearer ${state.token}` }
       });
 
@@ -223,7 +231,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
         }
       }
 
-      const createRes = await fetch('http://localhost:8000/api/space/', {
+      const createRes = await fetch(`${API_BASE_URL}/api/space/`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -249,7 +257,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     if (!state.token) return; 
 
     try {
-      const response = await fetch('http://localhost:8000/api/space/', {
+      const response = await fetch(`${API_BASE_URL}/api/space/`, {
         method: 'GET',
         headers: { 'Authorization': `Bearer ${state.token}` }
       });
@@ -335,7 +343,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
     }
 
     try {
-      const response = await fetch(`http://localhost:8000/api/space/${spaceId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/space/${spaceId}`, {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${state.token}` }
       });
@@ -354,7 +362,7 @@ export const useAppStore = create<AppStore>((set, get) => ({
           ...(isDeletingActiveSession ? { 
             activeSessionId: null, 
             activeChat: null,
-            activeDocumentId: null, // ✅ Close panel if active space is deleted
+            activeDocumentId: null, // Close panel if active space is deleted
             isRightPanelOpen: false
           } : {})
         };
@@ -364,4 +372,72 @@ export const useAppStore = create<AppStore>((set, get) => ({
       toast.error("Failed to delete space");
     }
   },
+
+  initLiveStream: (spaceId, messageId) => set((state) => ({
+    liveStreams: {
+      ...state.liveStreams,
+      [spaceId]: { isProcessing: true, progress: null, accumulatedText: '', messageId }
+    }
+  })),
+
+  updateLiveStreamProgress: (spaceId, progress) => set((state) => {
+    const stream = state.liveStreams[spaceId];
+    if (!stream) return state;
+    
+    // Check if the user is currently looking at this space
+    const isCurrentSpace = state.activeSessionId === spaceId;
+    
+    return {
+      liveStreams: {
+        ...state.liveStreams,
+        [spaceId]: { ...stream, progress }
+      },
+      // Instantly update the UI if they are looking at it
+      activeChat: (isCurrentSpace && state.activeChat) 
+        ? { ...state.activeChat, agentProgress: progress } 
+        : state.activeChat
+    };
+  }),
+
+  updateLiveStreamText: (spaceId, text) => set((state) => {
+    const stream = state.liveStreams[spaceId];
+    if (!stream) return state;
+
+    // Check if the user is currently looking at this space
+    const isCurrentSpace = state.activeSessionId === spaceId;
+    
+    return {
+      liveStreams: {
+        ...state.liveStreams,
+        [spaceId]: { ...stream, accumulatedText: text }
+      },
+      // Instantly update the chat bubble if they are looking at it
+      activeChat: (isCurrentSpace && state.activeChat)
+        ? {
+            ...state.activeChat,
+            messages: state.activeChat.messages.map(msg => 
+              msg.id === stream.messageId ? { ...msg, content: text } : msg
+            )
+          }
+        : state.activeChat
+    };
+  }),
+
+  endLiveStream: (spaceId) => set((state) => {
+    // 1. Create a shallow copy of the current streams
+    const remainingStreams = { ...state.liveStreams };
+    
+    // 2. Delete the specific stream from the copy
+    delete remainingStreams[spaceId];
+    
+    const isCurrentSpace = state.activeSessionId === spaceId;
+    
+    return {
+      liveStreams: remainingStreams,
+      // Clear the progress banner from the UI if they are looking at it
+      activeChat: (isCurrentSpace && state.activeChat)
+        ? { ...state.activeChat, agentProgress: null }
+        : state.activeChat
+    };
+  }),
 }));

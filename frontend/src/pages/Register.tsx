@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { Mail, Lock, User, ArrowRight } from 'lucide-react'; 
 import { useAppStore } from '../store/useAppStore'; 
 import toast from 'react-hot-toast'; 
+import { API_BASE_URL } from '../api/config'
 
 export default function Register() {
   const navigate = useNavigate();
@@ -15,8 +16,30 @@ export default function Register() {
   
   const [isLoading, setIsLoading] = useState(false);
 
+  const validatePassword = (pwd: string) => {
+    if (pwd.length < 8) {
+      return 'Password must be at least 8 characters long';
+    }
+    if (!/[A-Za-z]/.test(pwd)) {
+      return 'Password must contain at least one letter';
+    }
+    if (!/\d/.test(pwd)) {
+      return 'Password must contain at least one number';
+    }
+    if (!/[!@#$%^&*()_+\-=[\]{};':"\\|,.<>/?`~]/.test(pwd)) {
+      return 'Password must contain at least one special symbol';
+    }
+    return null;
+  };
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const passwordError = validatePassword(password);
+    if (passwordError) {
+      toast.error(passwordError);
+      return;
+    }
 
     if (password !== confirmPassword) {
       toast.error('Passwords do not match');
@@ -26,7 +49,7 @@ export default function Register() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/auth/signup', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/signup`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

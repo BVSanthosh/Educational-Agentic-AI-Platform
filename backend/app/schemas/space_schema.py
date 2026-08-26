@@ -23,7 +23,6 @@ class SpaceBase(BaseModel):
 
 class SpaceResponse(SpaceBase):
     data: Dict[str, Any] 
-    # 2. ✅ Update this to use DocumentMeta instead of DocumentResponse
     documents: List[DocumentMeta] = []
     
 class CreateSpace(BaseModel):

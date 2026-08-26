@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
 import toast from 'react-hot-toast'; 
+import { API_BASE_URL } from '../api/config';
 
 export default function Settings() {
   const navigate = useNavigate();
@@ -21,7 +22,7 @@ export default function Settings() {
     
     try {
       // 2. Call the backend API to delete the user
-      const response = await fetch('http://localhost:8000/api/auth/delete-account', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/delete-account`, {
         method: 'DELETE',
         headers: {
           'Authorization': `Bearer ${token}`

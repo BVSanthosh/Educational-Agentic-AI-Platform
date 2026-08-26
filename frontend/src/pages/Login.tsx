@@ -3,6 +3,7 @@ import { useNavigate, Link } from 'react-router-dom';
 import { User, Lock, ArrowRight } from 'lucide-react'; 
 import { useAppStore } from '../store/useAppStore';
 import toast from 'react-hot-toast'; 
+import { API_BASE_URL } from '../api/config'
 
 export default function Login() {
   const navigate = useNavigate();
@@ -20,7 +21,7 @@ export default function Login() {
     if (code) {
       const handleGoogleCallback = async () => {
         try {
-          const response = await fetch('http://localhost:8000/api/auth/google', {
+          const response = await fetch(`${API_BASE_URL}/api/auth/google`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             credentials: 'include',

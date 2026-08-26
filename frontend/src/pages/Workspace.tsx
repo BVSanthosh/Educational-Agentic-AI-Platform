@@ -50,7 +50,7 @@ export default function Workspace() {
         <aside className="w-72 border-r border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-900 flex flex-col shrink-0 transition-colors duration-200">
           {/* ✅ UPDATED: Flex container with Title and Close 'X' Button */}
           <div className="p-4 border-b border-gray-200 dark:border-gray-800 flex items-center justify-between transition-colors duration-200">
-            <h1 className="font-bold text-xl tracking-tight text-blue-600 dark:text-blue-400 transition-colors">EduAgent AI</h1>
+            <h1 className="font-bold text-xl tracking-tight text-blue-600 dark:text-blue-400 transition-colors">EduAgent</h1>
             <button 
               onClick={() => setLeftPanelOpen(false)}
               className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-700 dark:hover:text-gray-200 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg transition-colors"
