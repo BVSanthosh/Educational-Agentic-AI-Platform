@@ -69,7 +69,7 @@ export default function Login() {
     setIsLoading(true);
 
     try {
-      const response = await fetch('http://localhost:8000/api/auth/login', {
+      const response = await fetch(`${API_BASE_URL}/api/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -185,7 +185,7 @@ export default function Login() {
             <button
               type="button"
               onClick={() => {
-                const googleClientId = "431217733922-egs0645uss1bf7pbhlt85u22udrn7joh.apps.googleusercontent.com"; 
+                const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID; 
                 const redirectUri = window.location.origin + "/login"; 
                 const scope = "openid email profile";
                 const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${googleClientId}&redirect_uri=${redirectUri}&response_type=code&scope=${scope}`;
