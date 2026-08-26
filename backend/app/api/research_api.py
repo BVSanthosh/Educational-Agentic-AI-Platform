@@ -52,7 +52,7 @@ async def get_streamed_research(
                 updated_at=func.now()
             )
         )
-            
+             
         await session.execute(update_messages_query)
         await session.commit()
     except Exception as db_err:
@@ -72,7 +72,7 @@ async def get_streamed_research(
     
     return StreamingResponse(
         stream_generator, 
-        media_type="text/event_stream",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
