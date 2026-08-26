@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import ConfirmationModal from './ConfirmationModal';
+import { API_BASE_URL } from '../api/config';
 
 interface SpaceToDelete {
   id: string;
@@ -87,7 +88,7 @@ export default function LeftNavigation() {
   const handleLogout = async () => {
     try {
       // Hit the backend logout endpoint to clear the HttpOnly cookie
-      await fetch('http://localhost:8000/api/auth/logout', {
+      await fetch(`${API_BASE_URL}/api/auth/logout`, {
         method: 'POST',
         credentials: 'include',
       });
