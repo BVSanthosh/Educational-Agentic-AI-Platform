@@ -3,6 +3,7 @@ import { useAppStore } from '../store/useAppStore';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import toast from 'react-hot-toast';
+import { API_BASE_URL } from '../api/config';
 
 export default function RightPanel() {
   const { 
@@ -31,7 +32,7 @@ export default function RightPanel() {
       setContent(null); // Clear the OLD content right before fetching the new one
       
       try {
-        const res = await fetch(`http://localhost:8000/api/documents/${activeDocumentId}`, {
+        const res = await fetch(`${API_BASE_URL}/api/documents/${activeDocumentId}`, {
           headers: { 'Authorization': `Bearer ${token}` }
         });
         
@@ -79,7 +80,7 @@ export default function RightPanel() {
     if (!token) return;
     
     try {
-      const res = await fetch(`http://localhost:8000/api/documents/${docId}`, {
+      const res = await fetch(`${API_BASE_URL}/api/documents/${docId}`, {
         headers: { 'Authorization': `Bearer ${token}` }
       });
       
