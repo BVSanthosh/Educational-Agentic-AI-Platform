@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Modern Vibrant Blue Gradient -->
+    <linearGradient id="eduGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2563EB" />
+      <stop offset="100%" stop-color="#38BDF8" />
+    </linearGradient>
+  </defs>
+
+  <g fill="none" stroke="url(#eduGradient)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Minimalist Open Book Spine & Base -->
+    <path 
+      d="M256 360 C200 320, 110 320, 70 340 V200 C110 180, 200 180, 256 220 C312 180, 402 180, 442 200 V340 C402 320, 312 320, 256 360 Z" 
+      stroke-width="24" 
+    />
+    <!-- Center Book Seam -->
+    <line x1="256" y1="220" x2="256" y2="360" stroke-width="24" />
+
+    <!-- Sleek Graduation Cap (Hovering / Elevated) -->
+    <polygon 
+      points="256,70 442,150 256,230 70,150" 
+      fill="url(#eduGradient)" 
+      stroke-width="0" 
+    />
+
+    <!-- Minimalist Tassel -->
+    <path 
+      d="M400 160 V240" 
+      stroke-width="14" 
+    />
+    <circle cx="400" cy="248" r="8" fill="url(#eduGradient)" stroke-width="0" />
+
+    <!-- AI Sparkle Core (Center Focus) -->
+    <path 
+      d="M256 120 Q256 150, 286 150 Q256 150, 256 180 Q256 150, 226 150 Q256 150, 256 120 Z" 
+      fill="#FFFFFF" 
+      stroke-width="0" 
+    />
+  </g>
+</svg>
