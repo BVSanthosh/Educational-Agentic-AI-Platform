@@ -33,7 +33,7 @@ async def get_streamed_references(space_id: UUID, body: ReferenceRequest, curren
 
     return StreamingResponse(
         stream_generator, 
-        media_type="text/event_stream",
+        media_type="text/event-stream",
         headers={
             "Cache-Control": "no-cache, no-transform",
             "Connection": "keep-alive",
