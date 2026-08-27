@@ -161,6 +161,7 @@ async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id
 
             except asyncio.TimeoutError:
                 # Heartbeat injected! Nginx and AWS won't drop the connection
+                print("=== HEARTBEAT PING SENT TO BROWSER ===")
                 yield f"data: {json.dumps({'type': 'ping'})}\n\n"
 
     except Exception as e:
