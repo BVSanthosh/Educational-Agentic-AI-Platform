@@ -338,10 +338,6 @@ export const useAppStore = create<AppStore>((set, get) => ({
     const state = get();
     if (!state.token) return;
 
-    if (!window.confirm("Are you sure you want to delete this space? This action cannot be undone.")) {
-      return;
-    }
-
     try {
       const response = await fetch(`${API_BASE_URL}/api/space/${spaceId}`, {
         method: 'DELETE',
