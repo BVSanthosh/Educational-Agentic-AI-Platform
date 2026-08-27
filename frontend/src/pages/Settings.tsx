@@ -2,26 +2,21 @@ import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ArrowLeft, Trash2, AlertTriangle } from 'lucide-react';
 import { useAppStore } from '../store/useAppStore';
+import ConfirmationModal from '../components/ConfirmationModal'; // Adjust import path if needed
 import toast from 'react-hot-toast'; 
 import { API_BASE_URL } from '../api/config';
 
 export default function Settings() {
   const navigate = useNavigate();
   const { token, logout } = useAppStore();
+  
+  const [isModalOpen, setIsModalOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
 
-  const handleDeleteAccount = async () => {
-    // 1. Prompt the user to confirm this destructive action
-    const confirmed = window.confirm(
-      "Are you absolutely sure you want to delete your account? This action cannot be undone and will permanently delete all your spaces, documents, and chat history."
-    );
-    
-    if (!confirmed) return;
-    
+  const handleConfirmDeleteAccount = async () => {
     setIsDeleting(true);
     
     try {
-      // 2. Call the backend API to delete the user
       const response = await fetch(`${API_BASE_URL}/api/auth/delete-account`, {
         method: 'DELETE',
         headers: {
@@ -33,7 +28,6 @@ export default function Settings() {
         throw new Error('Failed to delete account');
       }
       
-      // 3. Clear Zustand state, clear localStorage, and kick to login
       logout();
       toast.success('Your account has been permanently deleted.');
       navigate('/login');
@@ -43,8 +37,8 @@ export default function Settings() {
       } else {
         toast.error('An error occurred while deleting your account.');
       }
-      
       setIsDeleting(false);
+      setIsModalOpen(false);
     }
   };
 
@@ -77,7 +71,7 @@ export default function Settings() {
               </p>
 
               <button
-                onClick={handleDeleteAccount}
+                onClick={() => setIsModalOpen(true)}
                 disabled={isDeleting}
                 className="flex items-center gap-2 bg-red-600 dark:bg-red-600 hover:bg-red-700 dark:hover:bg-red-500 text-white px-5 py-2.5 rounded-xl font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
               >
@@ -88,6 +82,17 @@ export default function Settings() {
           </div>
         </div>
       </main>
+
+      {/* Confirmation Modal */}
+      <ConfirmationModal
+        isOpen={isModalOpen}
+        title="Delete Account"
+        message="Are you absolutely sure you want to delete your account? This action cannot be undone and will permanently delete all your spaces, documents, and chat history."
+        confirmLabel="Delete Account"
+        isLoading={isDeleting}
+        onConfirm={handleConfirmDeleteAccount}
+        onCancel={() => setIsModalOpen(false)}
+      />
     </div>
   );
 }

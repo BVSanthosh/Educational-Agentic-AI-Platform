@@ -170,7 +170,7 @@ async def stream_get_answer_and_persist(
                     )
                     await db_session.execute(update_agent_message)
                     await db_session.commit()
-
+ 
             await queue.put({'type': 'done'})
 
         except Exception as e:
