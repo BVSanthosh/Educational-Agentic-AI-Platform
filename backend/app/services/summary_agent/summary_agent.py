@@ -1,4 +1,5 @@
-import json
+import json 
+import asyncio
 from typing import AsyncGenerator, cast, Any, Optional
 from uuid import UUID, uuid4
 from datetime import datetime, timezone
@@ -89,92 +90,117 @@ async def stream_get_answer_and_persist(
     space_id: UUID,
     thread_id: str
 ) -> AsyncGenerator[str, None]:
-    if reference_agent is None:
+    agent = reference_agent
+    if agent is None:
         yield f"data: {json.dumps({'type': 'error', 'message': 'Agent not initialized'})}\n\n"
         return
     
-    try:   
-        yield f"data: {json.dumps({'type': 'progress', 'message': 'Searching document for answers...'})}\n\n"
-        
-        # Pass the space_id into the configuration so the `@tool` can access it!
-        config: RunnableConfig = {
-            "configurable": {
-                "thread_id": thread_id, # Group the memory by space
-                "space_id": str(space_id)   # Inject space_id for pgvector
-            }
-        }
-        
-        inputs = {"messages": [{"role": "user", "content": user_input}]}
+    queue = asyncio.Queue()
+
+    # 1. Background worker to execute the LangGraph agent and save to DB independently
+    async def run_summary_agent_background():
         full_agent_response = ""
-        
         is_searching = False
         
-        # Bulletproof event streaming loop
-        async for event in reference_agent.astream_events(inputs, config=config, version="v2"):
-            event_type = event.get("event")
-            event_data = event.get("data")
-            name = event.get("name")
+        try:
+            await queue.put({'type': 'progress', 'message': 'Searching document for answers...'})
             
-            if not isinstance(event_data, dict):
-                continue
+            config: RunnableConfig = {
+                "configurable": {
+                    "thread_id": thread_id,
+                    "space_id": str(space_id)
+                }
+            }
+            inputs = {"messages": [{"role": "user", "content": user_input}]}
+
+            async for event in agent.astream_events(inputs, config=config, version="v2"):
+                event_type = event.get("event")
+                event_data = event.get("data")
+                name = event.get("name")
                 
-            # 1. Emitting Tool Progress
-            if event_type == "on_tool_start" and name == "search_document":
-                is_searching = True
-                yield f"data: {json.dumps({'type': 'progress', 'message': 'Extracting context from document...'})}\n\n"
-                
-            elif event_type == "on_tool_end" and name == "search_document":
-                is_searching = False
-            
-            # 2. Emitting LLM Chat Tokens safely
-            elif event_type == "on_chat_model_stream" and not is_searching:
-                chunk = event_data.get("chunk")
-                
-                if chunk and hasattr(chunk, "content") and chunk.content:
-                    text_delta = ""
+                if not isinstance(event_data, dict):
+                    continue
                     
-                    # Safely extract text whether it is a string or a list of dictionaries
-                    if isinstance(chunk.content, str):
-                        text_delta = chunk.content
-                    elif isinstance(chunk.content, list):
-                        for block in chunk.content:
-                            if isinstance(block, dict) and "text" in block:
-                                text_delta += block["text"]
-                            elif isinstance(block, str):
-                                text_delta += block
-                                
-                    # Only yield if we actually extracted text
-                    if text_delta:
-                        full_agent_response += text_delta
-                        yield f"data: {json.dumps({'type': 'token', 'content': text_delta})}\n\n"
-            
-        # Persist the full response to the DB
-        agent_message = {
-            "id": str(uuid4()),
-            "role": "agent",
-            "content": full_agent_response,
-            "created_at": datetime.now(timezone.utc).isoformat()
-        }
-        
-        async with AsyncSessionLocal() as db_session:
-            update_agent_message = (
-                update(Space)
-                .where(Space.id == space_id, Space.user_id == user_id)
-                .values(
-                    data=func.jsonb_insert(
-                        Space.data, 
-                        sql_cast(["messages", "-1"], ARRAY(String)),
-                        sql_cast(agent_message, JSONB),
-                        True
-                    ),
-                    updated_at=func.now()
-                )
-            )
-            await db_session.execute(update_agent_message)
-            await db_session.commit()
-            
-        yield f"data: {json.dumps({'type': 'done'})}\n\n"
-        
+                if event_type == "on_tool_start" and name == "search_document":
+                    is_searching = True
+                    await queue.put({'type': 'progress', 'message': 'Extracting context from document...'})
+                    
+                elif event_type == "on_tool_end" and name == "search_document":
+                    is_searching = False
+                
+                elif event_type == "on_chat_model_stream" and not is_searching:
+                    chunk = event_data.get("chunk")
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        text_delta = ""
+                        if isinstance(chunk.content, str):
+                            text_delta = chunk.content
+                        elif isinstance(chunk.content, list):
+                            for block in chunk.content:
+                                if isinstance(block, dict) and "text" in block:
+                                    text_delta += block["text"]
+                                elif isinstance(block, str):
+                                    text_delta += block
+                                    
+                        if text_delta:
+                            full_agent_response += text_delta
+                            await queue.put({'type': 'token', 'content': text_delta})
+
+            # --- AGENT FINISHED SUCCESSFULLY: PERSIST TO DB ---
+            if full_agent_response.strip():
+                agent_message = {
+                    "id": str(uuid4()),
+                    "role": "agent",
+                    "content": full_agent_response,
+                    "created_at": datetime.now(timezone.utc).isoformat()
+                }
+                
+                async with AsyncSessionLocal() as db_session:
+                    update_agent_message = (
+                        update(Space)
+                        .where(Space.id == space_id, Space.user_id == user_id)
+                        .values(
+                            data=func.jsonb_insert(
+                                Space.data, 
+                                sql_cast(["messages", "-1"], ARRAY(String)),
+                                sql_cast(agent_message, JSONB),
+                                True
+                            ),
+                            updated_at=func.now()
+                        )
+                    )
+                    await db_session.execute(update_agent_message)
+                    await db_session.commit()
+
+            await queue.put({'type': 'done'})
+
+        except Exception as e:
+            print(f"Error in run_summary_agent_background: {e}")
+            await queue.put(e)
+        finally:
+            await queue.put(None)  # Signal completion
+
+    # 2. Launch background task
+    task = asyncio.create_task(run_summary_agent_background())
+
+    # 3. Stream to browser with heartbeat protection
+    try:
+        while True:
+            try:
+                event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                
+                if event is None: 
+                    break
+                if isinstance(event, Exception):
+                    raise event
+                
+                yield f"data: {json.dumps(event)}\n\n"
+
+            except asyncio.TimeoutError:
+                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
+
+    except asyncio.CancelledError:
+        # Browser disconnected/switched spaces. Background task safely finishes writing to DB!
+        return
     except Exception as e:
-        print(f"Error in stream_get_answer_and_persist: {e}")
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
+        return
