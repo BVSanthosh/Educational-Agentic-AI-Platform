@@ -2,13 +2,16 @@ import os
 import json
 import asyncio
 import aioboto3
+from sqlalchemy import update, func, String, cast
+from sqlalchemy.dialects.postgresql import JSONB, ARRAY
+from datetime import datetime, timezone
 from pathlib import Path 
 from typing import AsyncGenerator
 from llama_index.readers.file import PDFReader
 from llama_index.core.ingestion import IngestionPipeline
 from uuid import UUID, uuid4
 from app.core.database import AsyncSessionLocal
-from app.models import Document, DocumentChunk
+from app.models import Document, DocumentChunk, Space
 from app.utils.s3_client import upload_document_to_s3
 from app.core.config import env
 from app.services.summary_agent.summary_agent import (
@@ -29,8 +32,8 @@ async def stream_embed_and_summarise(
     
     queue = asyncio.Queue()
 
-    # 1. Background worker that processes the heavy pipeline and saves to DB independently of the browser
     async def run_ingestion_and_summary_background():
+        accumulated_chat_text = []
         try:
             await queue.put({'type': 'progress', 'message': 'Parsing document and creating vector embeddings...'})
             
@@ -89,34 +92,37 @@ async def stream_embed_and_summarise(
             # Save Summary as a viewable Document in S3/Database
             base_name = os.path.splitext(filename)[0]
             summary_filename = f"Summary_{base_name}.md"
-            s3_data = await upload_document_to_s3(summary_text, filename, "summary")
+            
+            # Pass summary_text and summary_filename correctly to S3
+            s3_data = await upload_document_to_s3(summary_text, summary_filename, "summary")
 
             async with AsyncSessionLocal() as db_session:
-                new_doc = Document(
-                    space_id=space_id,
-                    user_id=user_id,
-                    filename=summary_filename,
-                    file_path=s3_data["s3_key"],
-                    file_size_bytes=s3_data["file_size_bytes"],
-                    mime_type=s3_data["mime_type"],
-                    metadata_={"s3_url": s3_data["url"]}
+                stmt = (
+                    update(Document)
+                    .where(Document.id == doc_id)
+                    .values(
+                        filename=summary_filename,
+                        file_path=s3_data["s3_key"],
+                        file_size_bytes=s3_data["file_size_bytes"],
+                        mime_type=s3_data["mime_type"],
+                        metadata_={"s3_url": s3_data["url"], "original_filename": filename}
+                    )
                 )
-                db_session.add(new_doc)
+                await db_session.execute(stmt)
                 await db_session.commit()
-                await db_session.refresh(new_doc)
-                summary_doc_id = new_doc.id
 
             await queue.put({
                 'type': 'document_ready', 
-                'document_id': str(summary_doc_id), 
+                'document_id': str(doc_id), 
                 'filename': summary_filename
             })
 
-            # Stream the handoff message tokens into the queue
+            # Stream the handoff message tokens and accumulate them
             handoff_text = f"I have successfully analyzed '{filename}', generated your summary, and opened it in the right panel. Feel free to ask me any questions about the document!"
             chunk_size = 6
             for i in range(0, len(handoff_text), chunk_size):
                 chunk = handoff_text[i:i + chunk_size]
+                accumulated_chat_text.append(chunk)
                 await queue.put({'type': 'token', 'content': chunk})
                 await asyncio.sleep(0.02)
                 
@@ -127,18 +133,45 @@ async def stream_embed_and_summarise(
                     Key=s3_key
                 )
 
+            # --- FIXED: PERSIST CHAT TO DB IN BACKGROUND SO SPACE IS NEVER BLANK ---
+            final_chat_text = "".join(accumulated_chat_text).strip()
+            if final_chat_text:
+                try:
+                    new_message = {
+                        "id": str(uuid4()), 
+                        "role": "agent",
+                        "content": final_chat_text, 
+                        "created_at": datetime.now(timezone.utc).isoformat()
+                    }
+                    async with AsyncSessionLocal() as background_db:
+                        query = (
+                            update(Space)
+                            .where(Space.id == space_id, Space.user_id == user_id)
+                            .values(
+                                data=func.jsonb_insert(
+                                    Space.data, 
+                                    cast(["messages", "-1"], ARRAY(String)),
+                                    cast(new_message, JSONB),
+                                    True
+                                ),
+                                updated_at=func.now()
+                            )
+                        )
+                        await background_db.execute(query)
+                        await background_db.commit()
+                except Exception as db_err:
+                    print(f"Background summary chat persist error: {db_err}")
+
             await queue.put({'type': 'done'})
 
         except Exception as e:
             print(f"ERROR IN STREAM_EMBED_AND_SUMMARISE_BACKGROUND: {str(e)}")
             await queue.put(e)
         finally:
-            await queue.put(None)  # Signal completion
+            await queue.put(None)
 
-    # 2. Launch background task
     task = asyncio.create_task(run_ingestion_and_summary_background())
 
-    # 3. Stream from queue to browser with timeout protection (heartbeat pings)
     try:
         while True:
             try:
@@ -155,7 +188,6 @@ async def stream_embed_and_summarise(
                 yield f"data: {json.dumps({'type': 'ping'})}\n\n"
 
     except asyncio.CancelledError:
-        # Browser disconnected/switched spaces. Background task finishes saving safely!
         return
     except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'message': str(e)})}\n\n"
