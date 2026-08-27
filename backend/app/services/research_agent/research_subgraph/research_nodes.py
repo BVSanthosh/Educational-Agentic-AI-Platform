@@ -15,7 +15,6 @@ tavily_client = TavilySearch(tavily_api_key=env.TAVILY_API_KEY)
 
 async def research_outline(state: ResearchState):
     OUTLINE_PROMPT = get_outline_prompt()
-    print("====WRITING RESEARCH OUTLINE====")
 
     system_message = OUTLINE_PROMPT
     human_message = f"""
@@ -41,7 +40,6 @@ async def research_outline(state: ResearchState):
     }
 
 async def research_worker(state: Query):
-    print("====RESEARCHING TOPIC====")
     configured_search = tavily_client.bind(
         max_results=2, 
         search_depth="advanced",
@@ -66,8 +64,6 @@ async def research_worker(state: Query):
 async def write_report(state: ResearchState):
     system_message = ""
     human_message = ""
-
-    print(f"WRITING REPORT")
 
     if state.get("feedback_report"):
         REWRITE_REPORT_PROMPT = get_rewrite_report_prompt(state["subject_matter"], state["outline"], state["research_results"], state["feedback_report"])
@@ -111,7 +107,6 @@ async def write_report(state: ResearchState):
     }
 
 async def report_feedback(state: ResearchState):    
-    print(f"REVIEWING REPORT")
     FEEDBACK_PROMPT = get_feedback_prompt(state["subject_matter"], state["outline"])
 
     system_message = FEEDBACK_PROMPT

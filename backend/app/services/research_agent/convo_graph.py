@@ -1,4 +1,5 @@
 import json
+import asyncio
 from fastapi import HTTPException, status
 from typing import Any, cast, AsyncGenerator
 from uuid import UUID, uuid4
@@ -41,7 +42,9 @@ def init_research_agent(pool: AsyncConnectionPool[Any]):
     research_agent = graph_builder.compile(checkpointer=checkpointer)
 
 async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id: str, user_id: UUID, db: AsyncSession) -> AsyncGenerator[str, None]:
-    if not research_agent:
+    # Fix 1: Bind to a local variable to satisfy the type checker
+    agent = research_agent
+    if not agent:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Failed to initialise agent"
@@ -58,79 +61,107 @@ async def stream_and_persist_research(user_input: str, space_id: UUID, thread_id
         }
     }
 
-    stream = research_agent.astream_events(
-        {"messages": [HumanMessage(content=user_input)]},
-        config=config,
-        version="v2"
-    ) 
-    
+    # Queue for the heartbeat setup
+    queue = asyncio.Queue()
+
+    # Background task to run the LangGraph stream
+    async def run_agent():
+        try:
+            # Use the local 'agent' variable here
+            async for event in agent.astream_events(
+                {"messages": [HumanMessage(content=user_input)]},
+                config=config,
+                version="v2"
+            ):
+                await queue.put(event)
+        except Exception as e:
+            await queue.put(e)
+        finally:
+            await queue.put(None)  # Signal completion
+
+    # Start the agent task
+    agent_task = asyncio.create_task(run_agent())
     is_writing_report = False
-     
+
     try:
-        async for event in stream:
-            event_type = event.get("event")
-            event_data = event.get("data")
-            name = event.get("name")
-            
-            if not isinstance(event_data, dict):
-                continue
-            
-            # 1. Emitting Tool Progress
-            if event_type == "on_tool_start" and name == "write_research_report":
-                is_writing_report = True
-                yield f"data: {json.dumps({'type': 'progress', 'message': 'Gathering sources and writing report...'})}\n\n"
+        while True:
+            try:
+                # Wait for an event with a 15-second heartbeat timeout
+                event = await asyncio.wait_for(queue.get(), timeout=15.0)
+                
+                # Check for completion or errors
+                if event is None: 
+                    break
+                if isinstance(event, Exception):
+                    raise event
+                
+                event_type = event.get("event")
+                event_data = event.get("data")
+                name = event.get("name")
+                
+                if not isinstance(event_data, dict):
+                    continue
+                
+                # 1. Emitting Tool Progress
+                if event_type == "on_tool_start" and name == "write_research_report":
+                    is_writing_report = True
+                    yield f"data: {json.dumps({'type': 'progress', 'message': 'Gathering sources and writing report...'})}\n\n"
 
-            # 2. Emitting Tool Completion & Document Link
-            elif event_type == "on_tool_end" and name == "write_research_report":
-                is_writing_report = False
-                try:
-                    output_obj = event_data.get("output")
-                    output_str = "{}"
-                    
-                    # Bulletproof extraction for LangChain v0.2 ToolMessages
-                    if output_obj is not None:
-                        if hasattr(output_obj, "content"): # It's a ToolMessage
-                            output_str = str(output_obj.content)
-                        elif isinstance(output_obj, dict) and "content" in output_obj:
-                            output_str = str(output_obj["content"])
-                        elif isinstance(output_obj, str):
-                            output_str = output_obj
+                # 2. Emitting Tool Completion & Document Link
+                elif event_type == "on_tool_end" and name == "write_research_report":
+                    is_writing_report = False
+                    try:
+                        output_obj = event_data.get("output")
+                        output_str = "{}"
+                        
+                        # Bulletproof extraction for LangChain v0.2 ToolMessages
+                        if output_obj is not None:
+                            if hasattr(output_obj, "content"): # It's a ToolMessage
+                                output_str = str(output_obj.content)
+                            elif isinstance(output_obj, dict) and "content" in output_obj:
+                                output_str = str(output_obj["content"])
+                            elif isinstance(output_obj, str):
+                                output_str = output_obj
 
-                    tool_output = json.loads(output_str)
-                    
-                    if tool_output.get("status") == "success":
-                        doc_payload = {
-                            "type": "document_ready", 
-                            "document_id": tool_output.get("document_id"),
-                            "filename": tool_output.get("filename", "Generated_Report.md") # ✅ Pass filename
-                        }
-                        yield f"data: {json.dumps(doc_payload)}\n\n"
-                    else:
-                        err_msg = tool_output.get("error", "Unknown tool error")
-                        yield f"data: {json.dumps({'type': 'error', 'message': f'Tool Failed: {err_msg}'})}\n\n"
-                except Exception as e:
-                    print(f"Failed to parse tool output: {e}")
-            
-            # 3. Emitting LLM Chat Tokens
-            elif event_type == "on_chat_model_stream" and not is_writing_report:
-                chunk = event_data.get("chunk")
-                if chunk and hasattr(chunk, "content") and chunk.content:
-                    text_delta = ""
-                    
-                    # Safely extract text whether it is a string or a list of dictionaries
-                    if isinstance(chunk.content, str):
-                        text_delta = chunk.content
-                    elif isinstance(chunk.content, list):
-                        for block in chunk.content:
-                            if isinstance(block, dict) and "text" in block:
-                                text_delta += block["text"]
-                            elif isinstance(block, str):
-                                text_delta += block
-                                
-                    # Only yield if we actually extracted text
-                    if text_delta:
-                        accumulated_response.append(text_delta)
-                        yield f"data: {json.dumps({'type': 'token', 'content': text_delta})}\n\n"
+                        tool_output = json.loads(output_str)
+                        
+                        if tool_output.get("status") == "success":
+                            doc_payload = {
+                                "type": "document_ready", 
+                                "document_id": tool_output.get("document_id"),
+                                "filename": tool_output.get("filename", "Generated_Report.md")
+                            }
+                            yield f"data: {json.dumps(doc_payload)}\n\n"
+                        else:
+                            err_msg = tool_output.get("error", "Unknown tool error")
+                            yield f"data: {json.dumps({'type': 'error', 'message': f'Tool Failed: {err_msg}'})}\n\n"
+                    except Exception as e:
+                        print(f"Failed to parse tool output: {e}")
+                
+                # 3. Emitting LLM Chat Tokens (Fix 2: Restored your exact original logic)
+                elif event_type == "on_chat_model_stream" and not is_writing_report:
+                    chunk = event_data.get("chunk")
+                    if chunk and hasattr(chunk, "content") and chunk.content:
+                        text_delta = ""
+                        
+                        # Safely extract text whether it is a string or a list of dictionaries
+                        if isinstance(chunk.content, str):
+                            text_delta = chunk.content
+                        elif isinstance(chunk.content, list):
+                            for block in chunk.content:
+                                if isinstance(block, dict) and "text" in block:
+                                    text_delta += block["text"]
+                                elif isinstance(block, str):
+                                    text_delta += block
+                                    
+                        # Only yield if we actually extracted text
+                        if text_delta:
+                            accumulated_response.append(text_delta)
+                            yield f"data: {json.dumps({'type': 'token', 'content': text_delta})}\n\n"
+
+            except asyncio.TimeoutError:
+                # Heartbeat injected! Nginx and AWS won't drop the connection
+                yield f"data: {json.dumps({'type': 'ping'})}\n\n"
 
     except Exception as e:
         yield f"data: {json.dumps({'type': 'error', 'message': f'Streaming Error: {str(e)}'})}\n\n"
